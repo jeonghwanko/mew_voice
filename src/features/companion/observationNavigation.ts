@@ -32,6 +32,20 @@ export function citedObservationHref(observationId: string, conversationId: stri
 }
 
 /**
+ * Earlier observation opened from “보호자가 남긴 반응 보기”.
+ * Keeps the question id, pet, and return path already on this screen.
+ * History, and an open without that id, stays on the plain observation route. The thread is not rewritten.
+ */
+export function citedPriorObservationHref(observationId: string, input: ObservationExitInput) {
+  const returnTo = firstParam(input.returnTo);
+  const conversationId = firstParam(input.conversationId);
+  if ((returnTo === 'home' || returnTo === 'conversation') && conversationId) {
+    return citedObservationHref(observationId, conversationId, firstParam(input.petId), returnTo);
+  }
+  return citedObservationHref(observationId, '');
+}
+
+/**
  * After a new reaction is saved, return to the question that opened this observation.
  * The conversation tab and the home chat both keep the stored thread id and pet.
  * History, and a home open without that id, stay on the observation. The thread is not rewritten.

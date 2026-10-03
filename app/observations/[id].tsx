@@ -7,7 +7,7 @@ import { API_BASE, authHeaders, errorMessage } from '../../src/lib/api';
 import { displayDate } from '../../src/features/companion/RecordCard';
 import { VideoPreview } from '../../src/features/companion/VideoPreview';
 import { AudioPreview } from '../../src/features/companion/AudioPreview';
-import { observationExitHref, observationLeaveHref } from '../../src/features/companion/observationNavigation';
+import { citedPriorObservationHref, observationExitHref, observationLeaveHref } from '../../src/features/companion/observationNavigation';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> }>();
@@ -35,7 +35,7 @@ export default function ObservationScreen() {
         <Card><Heading>가능한 의미</Heading>{inference.possibilities.map((p, i) => <View key={i} style={{ gap: 5, marginBottom: 10 }}><Body>{i + 1}. {p.label}</Body><Body muted>{p.reason}</Body></View>)}</Card>
         <Card><Badge>{data.status === 'ABSTAINED' ? '판단 어려움' : inference.confidence === 'high' ? '단서 충분함' : '단서 제한적'}</Badge>{inference.reason && <Body>{inference.reason}</Body>}{inference.limitations.map((v, i) => <Body muted key={i}>{v}</Body>)}</Card>
         {inference.suggestedAction && <Card accent><Heading>이렇게 반응해 볼까요?</Heading><Body>{inference.suggestedAction}</Body></Card>}
-        {!!inference.citedObservationIds.length && <><Heading>함께 참고한 이전 기록</Heading>{inference.citedObservationIds.map(ref => <Button key={ref} title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(`/observations/${ref}`)} />)}</>}
+        {!!inference.citedObservationIds.length && <><Heading>함께 참고한 이전 기록</Heading>{inference.citedObservationIds.map(ref => <Button key={ref} title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(ref, params))} />)}</>}
       </>}
       <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.</Body>
       {data.feedback?.map(f => <Card key={f.id}><Badge>보호자 기록</Badge><Body>{f.action} → {f.reaction}</Body>{f.note && <Body muted>{f.note}</Body>}</Card>)}
