@@ -1,7 +1,8 @@
 import type { CompanionCheckin, CompanionConversation, CompanionInference, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, saveDemoConversation, type FeedbackRecord } from './demo';
-import { citedReactionGoneText, observationCitedReactions, presentCitedReactionAnswer, resolveCitedReactionMap } from './daily';
-import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia } from './observationStore';
+import { citedReactionGoneText, dayKey, observationCitedReactions, presentCitedReactionAnswer, resolveCitedReactionMap } from './daily';
+import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime } from './observationStore';
+import { summarizeWeek } from './weeklySummary';
 import { errorMessage } from '../../lib/api';
 
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
@@ -262,4 +263,84 @@ it('rejects a move to the same cat, a missing cat, or an account and does not in
   expect(state.feedback).toHaveLength(1);
   expect(errorMessage(new Error('INVALID_OBSERVATION_PET'))).toBe('옮길 아이를 확인해 주세요.');
   expect(errorMessage(new Error('OBSERVATION_PET_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 관찰은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
+});
+
+it('corrects one observation time in place so the diary and weekly summary follow the new time', async () => {
+  const now = new Date('2026-10-03T02:00:00.000Z');
+  const saved = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const thread: CompanionConversation = { id: 'thread-1', petId: 'demo-momo', question: '창가에서 왜 울까요?', answer: saved, status: 'COMPLETED', citedObservationIds: ['obs-1'], citedCheckinIds: ['care-1'], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' };
+  const inference = { id: 'inf-1', observationId: 'obs-1', status: 'ABSTAINED' as const, utterance: null, confidence: 'low' as const, reason: '체험 모드에서는 AI를 호출하지 않아요.', observation: ['보호자가 사진과 상황을 입력했어요.'], possibilities: [], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.'], suggestedAction: null, citedObservationIds: ['older-photo'], createdAt: '2026-09-01T00:00:00Z' };
+  const photo = { ...observation('obs-1', 'demo-momo', 'PHOTO'), localPhotoUri: 'file:///companion-photos/obs-1.jpg', inference, question: '창가에서 왜 울까요?', contextTags: ['창가에서', '베란다'], createdAt: '2026-09-01T00:00:00.000Z', completedAt: '2026-09-01T00:00:00.000Z' };
+  const audio = { ...observation('obs-2', 'demo-momo', 'AUDIO'), localAudioUri: 'file:///companion-audio/obs-2.m4a', media: [{ kind: 'AUDIO' as const, mimeType: 'audio/m4a', byteSize: 12, durationMs: 2_000, url: '' }], createdAt: '2026-10-02T01:00:00.000Z', contextTags: ['놀이 중'] };
+  const video = { ...observation('obs-3', 'demo-momo', 'VIDEO'), localVideoUri: 'file:///companion-videos/obs-3.mp4', media: [{ kind: 'VIDEO' as const, mimeType: 'video/mp4', byteSize: 20, durationMs: 4_000, url: '' }], createdAt: '2026-10-02T12:00:00.000Z', contextTags: ['창가에서'] };
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [photo, audio, video];
+    data.feedback = [reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z'), reaction('on-2', 'obs-2', '2026-10-02T01:00:00Z')];
+    data.checkins = [checkin()];
+    data.conversations = [thread];
+  });
+  const before = summarizeWeek({ petId: 'demo-momo', now, demo: true, observations: [photo, audio, video], feedback: [reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z'), reaction('on-2', 'obs-2', '2026-10-02T01:00:00Z')], checkins: [checkin()] });
+  expect(before.observationCount).toBe(2);
+  expect(before.photoCount).toBe(0);
+  expect(dayKey(photo.createdAt)).toBe('2026-09-01');
+  const updated = await updateDemoObservationTime('obs-1', '  2026-10-02T10:30:00.000Z  ', now);
+  const audioMoved = await updateDemoObservationTime('obs-2', '2026-09-01T00:00:00.000Z', now);
+  const videoKept = await updateDemoObservationTime('obs-3', '2026-10-01T00:00:00.000Z', now);
+  const state = await getDemo();
+  expect(state.observations).toHaveLength(3);
+  expect(updated).toMatchObject({ id: 'obs-1', petId: 'demo-momo', kind: 'PHOTO', question: '창가에서 왜 울까요?', contextTags: ['창가에서', '베란다'], localPhotoUri: 'file:///companion-photos/obs-1.jpg', status: 'ABSTAINED', createdAt: '2026-10-02T10:30:00.000Z', completedAt: '2026-09-01T00:00:00.000Z' });
+  expect(updated.inference).toEqual(inference);
+  expect(audioMoved).toMatchObject({ id: 'obs-2', kind: 'AUDIO', localAudioUri: 'file:///companion-audio/obs-2.m4a', createdAt: '2026-09-01T00:00:00.000Z', question: '식후에는 왜 그르릉거릴까요?' });
+  expect(audioMoved.media).toEqual(audio.media);
+  expect(videoKept).toMatchObject({ id: 'obs-3', kind: 'VIDEO', localVideoUri: 'file:///companion-videos/obs-3.mp4', createdAt: '2026-10-01T00:00:00.000Z' });
+  const kept = state.observations.find(item => item.id === 'obs-1');
+  expect(kept?.inference).toEqual(inference);
+  expect(kept?.media).toEqual([]);
+  expect(state.feedback).toEqual([reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z'), reaction('on-2', 'obs-2', '2026-10-02T01:00:00Z')]);
+  expect(state.checkins).toEqual([checkin()]);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  expect(state.conversations[0]).toMatchObject({ id: 'thread-1', question: '창가에서 왜 울까요?', answer: saved, citedObservationIds: ['obs-1'] });
+  const diary = state.observations.map(item => ({ id: `observation-${item.id}`, at: item.createdAt })).sort((a, b) => b.at.localeCompare(a.at));
+  expect(diary.map(item => item.id)).toEqual(['observation-obs-1', 'observation-obs-3', 'observation-obs-2']);
+  expect(dayKey(diary[0].at)).toBe('2026-10-02');
+  const summary = summarizeWeek({ petId: 'demo-momo', now, demo: true, observations: state.observations, feedback: state.feedback, checkins: state.checkins });
+  expect(summary.observationCount).toBe(2);
+  expect(summary.photoCount).toBe(1);
+  expect(summary.audioCount).toBe(0);
+  expect(summary.videoCount).toBe(1);
+  expect(summary.feedbackCount).toBe(1);
+  expect(summary.frequentTags).toEqual([{ tag: '창가에서', count: 2 }, { tag: '베란다', count: 1 }]);
+  const again = await saveDemoConversation('demo-momo', '창가에서 왜 울까요?', 'thread-2', new Date('2026-10-03T01:00:00.000Z'));
+  expect(again.citedObservationIds).toEqual(['obs-1']);
+  expect(again.answer).toContain('놀아줬어요');
+  expect((await getDemo()).conversations.find(item => item.id === 'thread-1')?.answer).toBe(saved);
+  expect((await getDemo()).observations.find(item => item.id === 'obs-1')?.inference).toEqual(inference);
+});
+
+it('rejects an empty or future observation time and does not invent an account update', async () => {
+  const now = new Date('2026-10-03T02:00:00.000Z');
+  const photo = { ...observation('obs-1', 'demo-momo', 'PHOTO'), localPhotoUri: 'file:///companion-photos/obs-1.jpg', createdAt: '2026-09-01T00:00:00.000Z' };
+  await changeDemo(data => {
+    data.observations = [photo];
+    data.feedback = [reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z')];
+  });
+  await expect(updateDemoObservationTime('obs-1', '   ', now)).rejects.toThrow('INVALID_OBSERVATION_TIME');
+  await expect(updateDemoObservationTime('obs-1', 'not-a-time', now)).rejects.toThrow('INVALID_OBSERVATION_TIME');
+  await expect(updateDemoObservationTime('obs-1', '2026-10-03T02:00:00.001Z', now)).rejects.toThrow('OBSERVATION_TIME_FUTURE');
+  await expect(updateDemoObservationTime('missing', '2026-10-02T00:00:00.000Z', now)).rejects.toThrow('NOT_FOUND');
+  const kept = await getDemo();
+  expect(kept.observations).toHaveLength(1);
+  expect(kept.observations[0]).toMatchObject({ id: 'obs-1', createdAt: '2026-09-01T00:00:00.000Z', localPhotoUri: 'file:///companion-photos/obs-1.jpg', question: '창가에서 왜 울까요?', contextTags: ['창가에서'] });
+  expect(kept.feedback).toHaveLength(1);
+  const same = await updateDemoObservationTime('obs-1', now.toISOString(), now);
+  expect(same.createdAt).toBe(now.toISOString());
+  expect(same.id).toBe('obs-1');
+  expect(same.inference).toBeNull();
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(updateDemoObservationTime('obs-1', '2026-10-01T00:00:00.000Z', now)).rejects.toThrow('CONSENT_REQUIRED');
+  expect((await getDemo()).observations[0].createdAt).toBe(now.toISOString());
+  expect(errorMessage(new Error('INVALID_OBSERVATION_TIME'))).toBe('기록 시각을 확인해 주세요.');
+  expect(errorMessage(new Error('OBSERVATION_TIME_FUTURE'))).toBe('미래 시각은 기록할 수 없어요. 이전 시각을 그대로 두었어요.');
+  expect(errorMessage(new Error('OBSERVATION_TIME_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 관찰 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });

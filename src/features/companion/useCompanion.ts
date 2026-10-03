@@ -8,7 +8,7 @@ import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { deleteDemoFeedback, updateDemoFeedback, type UpdateDemoFeedbackInput } from './reactionStore';
-import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia, type UpdateDemoObservationCaptionInput, type UpdateDemoObservationMediaInput } from './observationStore';
+import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime, type UpdateDemoObservationCaptionInput, type UpdateDemoObservationMediaInput } from './observationStore';
 import { deleteDemoConversation, moveDemoConversation, updateDemoConversationQuestion } from './conversationStore';
 import { updateDemoPetProfile, type UpdateDemoPetProfileInput } from './petStore';
 import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations, reassignObservationDemoMedia, revokeDemoMediaUrls } from './webMediaStore';
@@ -130,6 +130,13 @@ export function useCompanion() {
     await invalidate();
     return observation;
   };
+  // Account mode has no route that rewrites a saved observation time. Do not pretend a server update happened.
+  const updateObservationTime = async (id: string, createdAt: string) => {
+    if (!demo) throw new Error('OBSERVATION_TIME_ACCOUNT_READONLY');
+    const record = await updateDemoObservationTime(id, createdAt);
+    await invalidate();
+    return record;
+  };
   // Account mode has no route that moves an observation to another pet. Do not pretend a server update happened.
   const moveObservation = async (id: string, petId: string) => {
     if (!demo) throw new Error('OBSERVATION_PET_ACCOUNT_READONLY');
@@ -190,7 +197,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, replaceObservationMedia, moveObservation, removeObservation, removeConversation, updateConversationQuestion, moveConversation, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, updateObservationTime, replaceObservationMedia, moveObservation, removeObservation, removeConversation, updateConversationQuestion, moveConversation, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {

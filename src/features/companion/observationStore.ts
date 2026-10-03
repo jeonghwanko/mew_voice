@@ -137,6 +137,32 @@ export async function updateDemoObservationMedia(id: string, input: UpdateDemoOb
   });
 }
 
+function normalizeRecordedTime(value: string, now: Date) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('INVALID_OBSERVATION_TIME');
+  const date = new Date(value.trim());
+  if (!Number.isFinite(date.getTime())) throw new Error('INVALID_OBSERVATION_TIME');
+  if (!Number.isFinite(now.getTime()) || date.getTime() > now.getTime()) throw new Error('OBSERVATION_TIME_FUTURE');
+  return date.toISOString();
+}
+
+/**
+ * Correct the recorded time on one photo, cry, or video observation.
+ * The same id, media, question, context tags, reactions, and inference stay.
+ * Diary and the weekly summary read this time. This does not analyze the file or upload it.
+ */
+export async function updateDemoObservationTime(id: string, createdAt: string, now = new Date()): Promise<DemoObservation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    const index = data.observations.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('NOT_FOUND');
+    const current = data.observations[index];
+    const recordedAt = normalizeRecordedTime(createdAt, now);
+    const updated: DemoObservation = { ...current, createdAt: recordedAt };
+    data.observations[index] = updated;
+    return updated;
+  });
+}
+
 /**
  * Move one observation onto another cat the caregiver already has.
  * The observation id, media, question, context tags, reactions, and inference stay.

@@ -25,10 +25,13 @@ function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
 const actions = ['놀아줬어요', '먹었어요', '쉬게 뒀어요', '지켜봤어요'];
 const reactions = ['편안해 보였어요', '계속했어요', '피했어요', '잘 모르겠어요'];
 function conflicted(cause: unknown) { return (cause instanceof ApiError && cause.status === 409) || (cause instanceof Error && cause.message === 'EDIT_CONFLICT'); }
+function kstInput(date = new Date()) { const kst = new Date(date.getTime() + 9 * 3600000); return kst.toISOString().slice(0, 16).replace('T', ' '); }
+function parseKst(value: string) { if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value)) return null; const date = new Date(`${value.replace(' ', 'T')}:00+09:00`); return Number.isFinite(date.getTime()) && kstInput(date) === value ? date.toISOString() : null; }
+function recordedTimeText(value: string) { const date = new Date(value); return Number.isFinite(date.getTime()) ? kstInput(date) : value; }
 
 export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
-  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
+  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [timeEditing, setTimeEditing] = useState(false); const [timeText, setTimeText] = useState(''); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const data = observation.data; const inference = data?.inference;
   const reactionMoments = useCitedReactionMoments(inference?.citedObservationIds ?? []);
   const citedReactions = observationCitedReactions(inference?.citedObservationIds, reactionMoments);
@@ -90,6 +93,25 @@ export default function ObservationScreen() {
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
   const captionChoices = [...knownTags, ...(data?.contextTags ?? []).filter(tag => !knownTags.includes(tag))];
+  const startTime = () => {
+    if (!data) return;
+    if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_TIME_ACCOUNT_READONLY'))); return; }
+    setTimeEditing(true); setTimeText(recordedTimeText(data.createdAt)); setError('');
+  };
+  const cancelTime = () => { setTimeEditing(false); setTimeText(''); setError(''); };
+  const saveTime = async () => {
+    const trimmed = timeText.trim();
+    if (!trimmed) { setError('기록 시각을 입력해 주세요.'); return; }
+    const createdAt = parseKst(trimmed);
+    if (!createdAt) { setError('기록 시각을 2026-09-10 19:20 형식으로 입력해 주세요.'); return; }
+    if (new Date(createdAt).getTime() > Date.now()) { setError(errorMessage(new Error('OBSERVATION_TIME_FUTURE'))); return; }
+    setBusy(true); setError('');
+    try {
+      await companion.updateObservationTime(id, createdAt);
+      setTimeEditing(false); setTimeText('');
+      await observation.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
   const removeThis = () => {
     if (!data) return;
     if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_ACCOUNT_READONLY'))); return; }
@@ -152,6 +174,20 @@ export default function ObservationScreen() {
           <Body>{data.question || '질문을 남기지 않았어요'}</Body>
           <Body muted>{data.contextTags.length ? data.contextTags.join(' · ') : '상황 태그를 남기지 않았어요'}</Body>
           {companion.demo ? <Button title="질문과 상황 수정" secondary disabled={busy} onPress={startCaption} /> : <Body muted>이 계정에 남긴 질문과 상황 태그는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
+        </>}
+      </Card>
+      <Card>
+        <Heading>기록한 시각</Heading>
+        {timeEditing ? <>
+          <Body muted>이 관찰의 시각만 고쳐요. 사진·울음·영상, 질문, 상황 태그, 반응 기록은 그대로 두어요. 다시 분석하거나 서버로 보내지 않아요.</Body>
+          <Field label="기록 시각 · 한국 시간(KST)" placeholder="2026-09-10 19:20" value={timeText} onChangeText={setTimeText} editable={!busy} />
+          <ErrorNote message={error} />
+          <Button title="시각 저장" busy={busy} disabled={busy || !timeText.trim()} onPress={() => void saveTime()} />
+          <Button title="시각 수정 취소" secondary disabled={busy} onPress={cancelTime} />
+        </> : <>
+          <Body>{recordedTimeText(data.createdAt)}</Body>
+          <Body muted>일기와 최근 7일 요약은 이 시각의 한국 날짜로 기록을 놓아요.</Body>
+          {companion.demo ? <Button title="시각 수정" secondary disabled={busy} onPress={startTime} /> : <Body muted>이 계정에 남긴 관찰 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
         </>}
       </Card>
       <Card>

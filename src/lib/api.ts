@@ -43,6 +43,9 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'OBSERVATION_CAPTION_ACCOUNT_READONLY') return '이 계정에 남긴 질문과 상황 태그는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_OBSERVATION_MEDIA') return '같은 종류의 사진·울음·영상만 바꿀 수 있어요.';
   if (error instanceof Error && error.message === 'OBSERVATION_MEDIA_ACCOUNT_READONLY') return '이 계정에 남긴 사진·울음·영상은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
+  if (error instanceof Error && error.message === 'INVALID_OBSERVATION_TIME') return '기록 시각을 확인해 주세요.';
+  if (error instanceof Error && error.message === 'OBSERVATION_TIME_FUTURE') return '미래 시각은 기록할 수 없어요. 이전 시각을 그대로 두었어요.';
+  if (error instanceof Error && error.message === 'OBSERVATION_TIME_ACCOUNT_READONLY') return '이 계정에 남긴 관찰 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_OBSERVATION_PET') return '옮길 아이를 확인해 주세요.';
   if (error instanceof Error && error.message === 'OBSERVATION_PET_ACCOUNT_READONLY') return '이 계정에 남긴 관찰은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_CHECKIN_PET') return '옮길 아이를 확인해 주세요.';
