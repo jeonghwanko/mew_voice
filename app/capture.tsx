@@ -11,6 +11,7 @@ import { sessionStorage } from '../src/core/storage';
 import { useSession } from '../src/core/session';
 import { errorMessage } from '../src/lib/api';
 import { readCaptureDraft } from '../src/features/companion/captureDraft';
+import { captureLeaveHref, captureSavedHref, replacedCaptureHref } from '../src/features/companion/captureNavigation';
 import { VideoPreview } from '../src/features/companion/VideoPreview';
 
 const contexts = ['식사 전', '식사 후', '놀이 중', '쉬는 중', '창가에서', '낯선 소리', '귀가 후'];
@@ -32,8 +33,8 @@ function dropKeptAudio(current: string) {
 }
 
 export default function Capture() {
-  const params = useLocalSearchParams<{ mode?: string; replaceId?: string; returnTo?: string; conversationId?: string; petId?: string }>();
-  const mode = params.mode;
+  const params = useLocalSearchParams<{ mode?: string | string[]; replaceId?: string | string[]; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>();
+  const mode = typeof params.mode === 'string' ? params.mode : Array.isArray(params.mode) ? params.mode[0] : undefined;
   const replaceId = typeof params.replaceId === 'string' ? params.replaceId : Array.isArray(params.replaceId) ? params.replaceId[0] : undefined;
   const replacing = !!replaceId?.trim();
   const initialKind = requestedKind(mode);
@@ -157,18 +158,6 @@ export default function Capture() {
     setUri(''); setDurationMs(undefined); setRequestId(newRequestId());
     if (current && FileSystem.documentDirectory && current.startsWith(`${FileSystem.documentDirectory}companion-videos/`)) void FileSystem.deleteAsync(current, { idempotent: true });
   };
-  const observationReturnHref = () => {
-    const id = replaceId?.trim();
-    if (!id) return '/history';
-    const query: string[] = [];
-    const returnTo = typeof params.returnTo === 'string' ? params.returnTo : Array.isArray(params.returnTo) ? params.returnTo[0] : undefined;
-    const conversationId = typeof params.conversationId === 'string' ? params.conversationId : Array.isArray(params.conversationId) ? params.conversationId[0] : undefined;
-    const petId = typeof params.petId === 'string' ? params.petId : Array.isArray(params.petId) ? params.petId[0] : undefined;
-    if (returnTo) query.push(`returnTo=${encodeURIComponent(returnTo)}`);
-    if (conversationId) query.push(`conversationId=${encodeURIComponent(conversationId)}`);
-    if (petId) query.push(`petId=${encodeURIComponent(petId)}`);
-    return query.length ? `/observations/${encodeURIComponent(id)}?${query.join('&')}` : `/observations/${encodeURIComponent(id)}`;
-  };
   const submit = async () => {
     if (!uri) return;
     if (replacing) {
@@ -178,7 +167,7 @@ export default function Capture() {
       setBusy(true); setError('');
       try {
         await companion.replaceObservationMedia(target.id, { uri, kind: target.kind, durationMs, mimeType: kind === 'PHOTO' ? 'image/jpeg' : undefined });
-        router.replace(observationReturnHref());
+        router.replace(replacedCaptureHref(replaceId ?? '', params));
       } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
       return;
     }
@@ -189,7 +178,7 @@ export default function Capture() {
       await sessionStorage.remove(draftKey);
       const legacy = await sessionStorage.get(legacyDraftKey);
       if (legacy && readCaptureDraft(legacy, kind)?.requestId === requestId) await sessionStorage.remove(legacyDraftKey);
-      router.replace(`/observations/${observation.id}`);
+      router.replace(captureSavedHref(observation.id, params));
     } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const changeQuestion = (value: string) => { setQuestion(value); setRequestId(newRequestId()); };
@@ -216,6 +205,6 @@ export default function Capture() {
     {!replacing && !companion.consent.data?.serviceStorage && <Card><Heading>기록 보관 동의</Heading><Body muted>{companion.demo ? '체험 입력과 메모를 이 기기에 저장합니다.' : '사진·울음·질문·관찰 결과를 서버의 비공개 기록으로 보관하고, 선택한 입력과 질문을 AI 공급자에게 보내 분석합니다.'} 공통 모델 학습 참여는 별도이며 현재 꺼져 있어요.</Body><Button title="기록 보관에 동의하기" secondary busy={busy} onPress={() => { setBusy(true); void companion.saveConsent(true, false).catch(e => setError(errorMessage(e))).finally(() => setBusy(false)); }} /></Card>}
     <ErrorNote message={error} />
     <Button title={replacing ? `${mediaLabel} 저장하기` : companion.demo ? (kind === 'VIDEO' ? '체험 영상 기록 남기기' : '체험 기록 남기기') : kind === 'AUDIO' ? '울음 관찰 요청하기' : kind === 'VIDEO' ? '영상은 체험 모드에서만 저장' : '사진 관찰 요청하기'} busy={busy} disabled={!uri || recording.isRecording || replaceBlocked || replaceMissing || (replacing ? false : (!activePet || !companion.consent.data?.serviceStorage || videoBlocked))} onPress={() => void submit()} />
-    <Button title="닫기" secondary disabled={busy} onPress={() => replacing ? router.replace(observationReturnHref()) : router.back()} />
+    <Button title="닫기" secondary disabled={busy} onPress={() => { if (replacing) { router.replace(replacedCaptureHref(replaceId ?? '', params)); return; } const home = captureLeaveHref(params); if (home) router.replace(home); else router.back(); }} />
   </Screen></KeyboardAvoidingView>;
 }
