@@ -63,6 +63,32 @@ export async function updateDemoConversationQuestion(id: string, question: strin
   });
 }
 
+function normalizeConversationTime(value: string, now: Date) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('INVALID_CONVERSATION_TIME');
+  const date = new Date(value.trim());
+  if (!Number.isFinite(date.getTime())) throw new Error('INVALID_CONVERSATION_TIME');
+  if (!Number.isFinite(now.getTime()) || date.getTime() > now.getTime()) throw new Error('CONVERSATION_TIME_FUTURE');
+  return date.toISOString();
+}
+
+/**
+ * Correct the saved time on one conversation.
+ * The same id, question, answer, and citations stay. The diary day follows this time.
+ * This does not create a conversation or a cat, and it does not rewrite the stored answer.
+ */
+export async function updateDemoConversationTime(id: string, createdAt: string, now = new Date()): Promise<CompanionConversation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    const index = data.conversations.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('NOT_FOUND');
+    const current = data.conversations[index];
+    const recordedAt = normalizeConversationTime(createdAt, now);
+    const updated: CompanionConversation = { ...current, createdAt: recordedAt };
+    data.conversations[index] = updated;
+    return updated;
+  });
+}
+
 /**
  * Move one saved question-and-answer onto another cat the caregiver already has.
  * The conversation id, question, answer, and citations inside that answer stay on the same row.

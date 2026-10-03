@@ -17,6 +17,10 @@ import { api, errorMessage } from '../../src/lib/api';
 
 type ConversationList = { items: CompanionConversation[]; nextCursor: string | null };
 
+function kstInput(date = new Date()) { const kst = new Date(date.getTime() + 9 * 3600000); return kst.toISOString().slice(0, 16).replace('T', ' '); }
+function parseKst(value: string) { if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value)) return null; const date = new Date(`${value.replace(' ', 'T')}:00+09:00`); return Number.isFinite(date.getTime()) && kstInput(date) === value ? date.toISOString() : null; }
+function recordedTimeText(value: string) { const date = new Date(value); return Number.isFinite(date.getTime()) ? kstInput(date) : value; }
+
 export default function Conversation() {
   const { petId: requestedPetId, conversationId } = useLocalSearchParams<{ petId?: string; conversationId?: string }>();
   const requestedConversationId = Array.isArray(conversationId) ? conversationId[0] : conversationId;
@@ -30,6 +34,8 @@ export default function Conversation() {
   const [movePetId, setMovePetId] = useState('');
   const [editingQuestion, setEditingQuestion] = useState(false);
   const [questionDraft, setQuestionDraft] = useState('');
+  const [timeEditing, setTimeEditing] = useState(false);
+  const [timeText, setTimeText] = useState('');
   const appliedConversation = useRef<string | null>(null);
   const alignedConversation = useRef<string | null>(null);
   const selectedPet = companion.activePet;
@@ -61,7 +67,7 @@ export default function Conversation() {
   }, [companion.demo, requestedConversationId, requestedPetId, pets.data, selectedPet?.id, selectPet]);
   useEffect(() => {
     appliedConversation.current = null;
-    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(false); setQuestionDraft('');
+    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText('');
   }, [selectedPet?.id]);
 
   const history = useQuery({
@@ -115,7 +121,7 @@ export default function Conversation() {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))); return; }
     const choices = (companion.pets.data ?? []).filter(pet => pet.id !== current.petId);
     if (!choices.length) return;
-    setMovingPet(true); setMovePetId(choices[0].id); setError('');
+    setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(true); setMovePetId(choices[0].id); setError('');
   };
   const cancelMove = () => { setMovingPet(false); setMovePetId(''); setError(''); };
   const saveMove = async () => {
@@ -135,7 +141,7 @@ export default function Conversation() {
   const startQuestion = () => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))); return; }
-    setEditingQuestion(true); setQuestionDraft(current.question); setError('');
+    setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(true); setQuestionDraft(current.question); setError('');
   };
   const cancelQuestion = () => { setEditingQuestion(false); setQuestionDraft(''); setError(''); };
   const saveQuestion = async () => {
@@ -146,6 +152,30 @@ export default function Conversation() {
       const updated = await companion.updateConversationQuestion(id, questionDraft);
       setActive(prev => prev?.id === id ? updated : prev);
       setEditingQuestion(false); setQuestionDraft('');
+      await history.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+
+
+  const startTime = () => {
+    if (!current) return;
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_TIME_ACCOUNT_READONLY'))); return; }
+    setEditingQuestion(false); setQuestionDraft(''); setMovingPet(false); setMovePetId(''); setTimeEditing(true); setTimeText(recordedTimeText(current.createdAt)); setError('');
+  };
+  const cancelTime = () => { setTimeEditing(false); setTimeText(''); setError(''); };
+  const saveTime = async () => {
+    if (!current) return;
+    const trimmed = timeText.trim();
+    if (!trimmed) { setError('대화 시각을 입력해 주세요.'); return; }
+    const createdAt = parseKst(trimmed);
+    if (!createdAt) { setError('대화 시각을 2026-09-10 19:20 형식으로 입력해 주세요.'); return; }
+    if (new Date(createdAt).getTime() > Date.now()) { setError(errorMessage(new Error('CONVERSATION_TIME_FUTURE'))); return; }
+    const id = current.id;
+    setBusy(true); setError('');
+    try {
+      const updated = await companion.updateConversationTime(id, createdAt);
+      setActive(prev => prev?.id === id ? updated : prev);
+      setTimeEditing(false); setTimeText('');
       await history.refetch();
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
@@ -191,6 +221,20 @@ export default function Conversation() {
         {companion.demo ? <Button title="이 대화 삭제" danger disabled={busy} onPress={removeThis} /> : <Body muted>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Body>}
       </Card>}
       {current ? <Card>
+        <Heading>남긴 시각</Heading>
+        {timeEditing ? <>
+          <Body muted>이 대화의 시각만 고쳐요. 질문, 답변, 인용은 그대로 두어요. 답을 다시 만들지 않아요.</Body>
+          <Field label="대화 시각 · 한국 시간(KST)" placeholder="2026-09-10 19:20" value={timeText} onChangeText={setTimeText} editable={!busy} />
+          <ErrorNote message={error} />
+          <Button title="시각 저장" busy={busy} disabled={busy || !timeText.trim()} onPress={() => void saveTime()} />
+          <Button title="시각 수정 취소" secondary disabled={busy} onPress={cancelTime} />
+        </> : <>
+          <Body>{recordedTimeText(current.createdAt)}</Body>
+          <Body muted>일기에는 이 시각의 한국 날짜로 이 대화를 놓아요.</Body>
+          {companion.demo ? <Button title="시각 수정" secondary disabled={busy} onPress={startTime} /> : <Body muted>이 계정에 남긴 대화 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
+        </>}
+      </Card> : null}
+      {current ? <Card>
         <Heading>어느 아이의 기록인가요</Heading>
         <Body muted>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Body>
         {companion.demo ? !companion.pets.data ? null : otherPets.length === 0 ? <Body muted>등록된 다른 아이가 없어서 옮길 수 없어요.</Body> : movingPet ? <>
@@ -201,7 +245,7 @@ export default function Conversation() {
       </Card> : null}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
-      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => { setActive(item); if (item.id !== current?.id) { setEditingQuestion(false); setQuestionDraft(''); } }} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>; })}
+      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => { setActive(item); if (item.id !== current?.id) { setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); } }} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {recordedTimeText(item.createdAt)}</Text></Pressable>; })}
       {!history.isLoading && !history.data?.items.length && (companion.demo
         ? <Empty title="아직 나눈 이야기가 없어요" detail="질문을 남기면 이 기기에만 기억돼요. 나갔다가 다시 들어와도 같은 질문과 답변을 읽을 수 있어요. 실제 AI 답변은 아니에요." />
         : <Empty title="아직 대화가 없어요" detail="첫 질문을 남기면 이곳에 기억돼요." />)}

@@ -53,6 +53,9 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'CONVERSATION_ACCOUNT_READONLY') return '이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_CONVERSATION_QUESTION') return '질문 문장을 확인해 주세요.';
   if (error instanceof Error && error.message === 'CONVERSATION_QUESTION_ACCOUNT_READONLY') return '이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
+  if (error instanceof Error && error.message === 'INVALID_CONVERSATION_TIME') return '대화 시각을 확인해 주세요.';
+  if (error instanceof Error && error.message === 'CONVERSATION_TIME_FUTURE') return '미래 시각은 기록할 수 없어요. 이전 시각을 그대로 두었어요.';
+  if (error instanceof Error && error.message === 'CONVERSATION_TIME_ACCOUNT_READONLY') return '이 계정에 남긴 대화 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_CONVERSATION_PET') return '옮길 아이를 확인해 주세요.';
   if (error instanceof Error && error.message === 'CONVERSATION_PET_ACCOUNT_READONLY') return '이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'IDEMPOTENCY_CONFLICT') return '저장 여부를 기록 목록에서 확인한 뒤 새 기록으로 작성해 주세요.';
