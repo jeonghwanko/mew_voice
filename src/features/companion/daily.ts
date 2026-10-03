@@ -163,6 +163,32 @@ function citedReactionSentence(reaction: CitedReactionRecord) {
     : `“${reaction.action}” 이후 “${reaction.reaction}”라고 남겼어요`;
 }
 
+export type ObservationCitedReaction = {
+  id: string;
+  /** Current sentence, the missing line, or null while this citation is not loaded. */
+  line: string | null;
+  /** The prior-reaction button stays only while a saved reaction might still be there. */
+  open: boolean;
+};
+
+/**
+ * Observation-screen copy for frozen citation ids.
+ * A saved reaction uses that observation’s record as it is now.
+ * A deleted observation or reaction uses the missing line and does not keep a quote.
+ * An id that is not loaded yet has no line, so nothing is invented. The stored thread is not rewritten.
+ */
+export function observationCitedReactions(
+  ids: readonly string[] | null | undefined,
+  moments: ReadonlyMap<string, CitedReactionRecord>,
+): ObservationCitedReaction[] {
+  return (ids ?? []).map(id => {
+    const record = moments.get(id);
+    if (!record) return { id, line: null, open: true };
+    if (record.status === 'gone') return { id, line: citedReactionGoneText, open: false };
+    return { id, line: citedReactionSentence(record), open: true };
+  });
+}
+
 /**
  * Cited reactions in the same order as this answer’s observation ids.
  * An id that is not loaded yet stays absent so a later sentence does not move up.

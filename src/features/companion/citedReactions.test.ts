@@ -1,4 +1,4 @@
-import { citedReactionFromFeedback, citedReactionGoneText, citedReactionsForAnswer, presentCitedReactionAnswer, presentConversationAnswer, resolveCitedReactionMap } from './daily';
+import { citedReactionFromFeedback, citedReactionGoneText, citedReactionsForAnswer, observationCitedReactions, presentCitedReactionAnswer, presentConversationAnswer, resolveCitedReactionMap } from './daily';
 
 const saved = '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.';
 
@@ -125,4 +125,21 @@ it('marks a missing observation gone and keeps a failed read absent', () => {
     extra: [{ id: 'later-page', record: { status: 'saved', action: '창문을 열었어요', reaction: '다가왔어요' } }],
   });
   expect(open.get('later-page')).toEqual({ status: 'saved', action: '창문을 열었어요', reaction: '다가왔어요' });
+});
+
+it('shows the observation screen’s cited reaction as it is saved now', () => {
+  const moments = new Map<string, { status: 'saved'; action: string; reaction: string } | { status: 'gone' }>([
+    ['kept', { status: 'saved', action: '창문을 열었어요', reaction: '다가왔어요' }],
+    ['gone', { status: 'gone' }],
+  ]);
+  const shown = observationCitedReactions(['kept', 'unread', 'gone'], moments);
+  expect(shown).toEqual([
+    { id: 'kept', line: '“창문을 열었어요” 이후 “다가왔어요”라고 남겼어요', open: true },
+    { id: 'unread', line: null, open: true },
+    { id: 'gone', line: citedReactionGoneText, open: false },
+  ]);
+  expect(shown[2].line).not.toContain('놀아줬어요');
+  expect(shown[2].line).not.toContain('따라왔어요');
+  expect(observationCitedReactions(undefined, moments)).toEqual([]);
+  expect(observationCitedReactions(['kept'], new Map())).toEqual([{ id: 'kept', line: null, open: true }]);
 });

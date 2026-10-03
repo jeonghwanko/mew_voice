@@ -7,6 +7,8 @@ import { API_BASE, authHeaders, errorMessage } from '../../src/lib/api';
 import { displayDate } from '../../src/features/companion/RecordCard';
 import { VideoPreview } from '../../src/features/companion/VideoPreview';
 import { AudioPreview } from '../../src/features/companion/AudioPreview';
+import { observationCitedReactions } from '../../src/features/companion/daily';
+import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
 import { citedPriorObservationHref, observationExitHref, observationLeaveHref } from '../../src/features/companion/observationNavigation';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
@@ -22,6 +24,8 @@ export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
   const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const data = observation.data; const inference = data?.inference;
+  const reactionMoments = useCitedReactionMoments(inference?.citedObservationIds ?? []);
+  const citedReactions = observationCitedReactions(inference?.citedObservationIds, reactionMoments);
   const save = async () => { setBusy(true); setError(''); try { await companion.feedback(id, { action: action.trim(), reaction: reaction.trim(), note: note.trim(), happenedAt: new Date().toISOString() }); setAction(''); setReaction(''); setNote(''); const next = observationExitHref(params); if (next) router.replace(next); else await observation.refetch(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } };
   return <Screen title={data?.question || '오늘의 관찰'} subtitle={data ? `${displayDate(data.createdAt)} · ${companion.pets.data?.find(p => p.id === data.petId)?.name ?? '우리 아이'}` : 'OBSERVATION'}>
     {observation.isLoading && <Loading />}<ErrorNote message={observation.error ? errorMessage(observation.error) : null} />
@@ -35,7 +39,7 @@ export default function ObservationScreen() {
         <Card><Heading>가능한 의미</Heading>{inference.possibilities.map((p, i) => <View key={i} style={{ gap: 5, marginBottom: 10 }}><Body>{i + 1}. {p.label}</Body><Body muted>{p.reason}</Body></View>)}</Card>
         <Card><Badge>{data.status === 'ABSTAINED' ? '판단 어려움' : inference.confidence === 'high' ? '단서 충분함' : '단서 제한적'}</Badge>{inference.reason && <Body>{inference.reason}</Body>}{inference.limitations.map((v, i) => <Body muted key={i}>{v}</Body>)}</Card>
         {inference.suggestedAction && <Card accent><Heading>이렇게 반응해 볼까요?</Heading><Body>{inference.suggestedAction}</Body></Card>}
-        {!!inference.citedObservationIds.length && <><Heading>함께 참고한 이전 기록</Heading>{inference.citedObservationIds.map(ref => <Button key={ref} title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(ref, params))} />)}</>}
+        {!!citedReactions.length && <><Heading>함께 참고한 이전 기록</Heading>{citedReactions.map(item => <View key={item.id}>{item.line ? <Body>{item.line}</Body> : null}{item.open ? <Button title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(item.id, params))} /> : null}</View>)}</>}
       </>}
       <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.</Body>
       {data.feedback?.map(f => <Card key={f.id}><Badge>보호자 기록</Badge><Body>{f.action} → {f.reaction}</Body>{f.note && <Body muted>{f.note}</Body>}</Card>)}
