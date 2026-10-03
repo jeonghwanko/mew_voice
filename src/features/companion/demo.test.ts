@@ -1,4 +1,4 @@
-import type { CompanionObservation } from '@findthem/shared';
+import type { CompanionCheckin, CompanionObservation } from '@findthem/shared';
 import { buildDemoObservation, clearDemoMemory, demoFromStorage, demoInference, groundedDemoReply, initialDemo, changeDemo, getDemo, saveDemoConversation, type FeedbackRecord } from './demo';
 import { readDemo, writeDemo } from '../../core/storage';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
@@ -104,5 +104,41 @@ describe('private demo memory', () => {
     expect(again).toEqual(saved);
     expect((await getDemo()).conversations.filter(item => item.id === 'thread-1')).toHaveLength(1);
     await expect(saveDemoConversation('cat-a', '다른 질문', 'thread-1')).rejects.toThrow('IDEMPOTENCY_CONFLICT');
+  });
+
+  it('cites a matching care check-in instead of a newer unrelated reaction', async () => {
+    const toyObs = { ...record('toy', 'cat-a', '2026-09-03T00:00:00Z'), question: '장난감을 안 봐요', contextTags: ['거실에서'] };
+    const newer: FeedbackRecord = { id: 'f-new', observationId: 'toy', action: '놀아줬어요', reaction: '장난감을 따라왔어요', note: null, happenedAt: '2026-09-03T12:00:00Z', createdAt: '2026-09-03T12:00:00Z' };
+    const checkin: CompanionCheckin = { id: 'care-window', petId: 'cat-a', kind: 'NOTE', note: '창가에서 햇빛을 쬐었어요', occurredAt: '2026-09-02T08:00:00.000Z', version: 1, createdAt: '2026-09-02T08:00:00.000Z', updatedAt: '2026-09-02T08:00:00.000Z' };
+    const otherCat: CompanionCheckin = { ...checkin, id: 'care-other', petId: 'cat-b' };
+    const question = '창가에서 햇빛을 쬐었어요';
+    const matched = groundedDemoReply('cat-a', [toyObs], [newer], question, [checkin, otherCat]);
+    expect(matched.citedCheckinIds).toEqual(['care-window']);
+    expect(matched.citedObservationIds).toEqual([]);
+    expect(matched.text).toContain('창가에서 햇빛을 쬐었어요');
+    expect(matched.text).not.toContain('장난감을 따라왔어요');
+    expect(matched.text).not.toContain('가장 최근');
+    expect(matched.text).toContain('실제 AI 분석이 아니에요');
+    expect(matched.text).not.toMatch(/알아들었어요|이해했어요|말을 했어요/);
+    const latestOnly = groundedDemoReply('cat-a', [toyObs], [newer], '오늘 어땠나요', [checkin]);
+    expect(latestOnly.citedObservationIds).toEqual(['toy']);
+    expect(latestOnly.citedCheckinIds).toEqual([]);
+    expect(latestOnly.text).toContain('가장 최근에 저장한 반응');
+    await changeDemo(data => { data.observations = [toyObs]; data.feedback = [newer]; data.checkins = [checkin, otherCat]; data.conversations = []; });
+    const calls = jest.mocked(writeDemo).mock.calls.length;
+    const saved = await saveDemoConversation('cat-a', question, 'thread-care', new Date('2026-09-04T00:00:00Z'));
+    expect(saved.citedCheckinIds).toEqual(['care-window']);
+    expect(saved.citedObservationIds).toEqual([]);
+    expect(saved.answer).toContain('창가에서 햇빛을 쬐었어요');
+    const raw = jest.mocked(writeDemo).mock.calls[calls][0] as string;
+    jest.mocked(readDemo).mockResolvedValueOnce(raw);
+    clearDemoMemory();
+    const loaded = await getDemo();
+    const thread = loaded.conversations.find(item => item.id === 'thread-care');
+    expect(thread?.petId).toBe('cat-a');
+    expect(thread?.citedCheckinIds).toEqual(['care-window']);
+    expect(thread?.citedObservationIds).toEqual([]);
+    expect(thread?.answer).toBe(saved.answer);
+    expect(loaded.checkins.filter(item => item.petId === 'cat-b').map(item => item.id)).toEqual(['care-other']);
   });
 });

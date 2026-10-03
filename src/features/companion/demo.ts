@@ -1,8 +1,9 @@
 import type { CompanionCheckin, CompanionConversation, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedback, CompanionInference } from '@findthem/shared';
 import { readDemo, writeDemo } from '../../core/storage';
+import { checkinLabels } from './daily';
 
 export type FeedbackRecord = CompanionFeedback;
-export type ChatReply = { id: string; text: string; citedObservationIds: string[] };
+export type ChatReply = { id: string; text: string; citedObservationIds: string[]; citedCheckinIds: string[] };
 export type DemoObservation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string };
 export type DemoState = { version: 1; checkins: CompanionCheckin[]; checkinRequests: Record<string, string>; pets: CompanionPet[]; observations: DemoObservation[]; feedback: FeedbackRecord[]; conversations: CompanionConversation[]; consent: CompanionConsent };
 export type DemoMediaDraft = { uri: string; kind: 'PHOTO' | 'AUDIO' | 'VIDEO'; durationMs?: number; mimeType?: string; byteSize?: number; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
@@ -56,16 +57,24 @@ function demoPhrases(parts: (string | null | undefined)[]) {
 }
 function memoryTime(item: FeedbackRecord) { return item.happenedAt || item.createdAt; }
 function compareMemory(a: FeedbackRecord, b: FeedbackRecord) { return memoryTime(a).localeCompare(memoryTime(b)) || a.id.localeCompare(b.id); }
-function memoryScore(question: string, observation: CompanionObservation, item: FeedbackRecord) {
+function textOverlap(question: string, fields: (string | null | undefined)[]) {
   const foldedQuestion = foldDemoText(question);
   if (foldedQuestion.length < 2) return 0;
-  const fields = [observation.question, ...observation.contextTags, item.action, item.reaction, item.note];
   let score = 0;
   for (const phrase of demoPhrases(fields)) if (foldedQuestion.includes(phrase)) score += phrase.length * 2;
   const foldedFields = fields.map(field => foldDemoText(field ?? ''));
   for (const token of demoPhrases([question])) if (foldedFields.some(field => field.includes(token))) score += token.length;
   return score;
 }
+function memoryScore(question: string, observation: CompanionObservation, item: FeedbackRecord) {
+  return textOverlap(question, [observation.question, ...observation.contextTags, item.action, item.reaction, item.note]);
+}
+function checkinTime(item: CompanionCheckin) { return item.occurredAt || item.createdAt; }
+function checkinLabel(item: CompanionCheckin) { return item.kind in checkinLabels ? checkinLabels[item.kind] : '돌봄 기록'; }
+type DemoCitation =
+  | { source: 'reaction'; at: string; sortId: string; observationId: string; feedback: FeedbackRecord }
+  | { source: 'checkin'; at: string; sortId: string; checkin: CompanionCheckin };
+function compareCitation(a: DemoCitation, b: DemoCitation) { return a.at.localeCompare(b.at) || a.sortId.localeCompare(b.sortId); }
 /** Pick the saved reaction the question actually names. A tie keeps the earlier record, not the newest one. */
 export function selectDemoMemory(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question: string) {
   const owned = new Map(observations.filter(item => item.petId === petId).map(item => [item.id, item]));
@@ -80,15 +89,53 @@ export function selectDemoMemory(petId: string, observations: CompanionObservati
   if (best) return { feedback: best.item, matched: true };
   return { feedback: memories.reduce((latest, item) => compareMemory(item, latest) > 0 ? item : latest), matched: false };
 }
-function demoReplyText(memory: FeedbackRecord | undefined, matched: boolean) {
-  if (!memory) return '아직 이 아이의 반응 기록이 없어요. 사진이나 울음 기록 뒤 해 본 행동과 이후 반응을 남기면 여기서 다시 찾아볼 수 있어요.\n\n체험 모드에서는 AI가 답변하지 않아요.';
-  const lead = matched ? '질문과 맞는 저장 기록을 찾았어요.' : '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요.';
-  return `${lead} “${memory.action}” 이후 “${memory.reaction}”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`;
+/** Saved reactions and care check-ins for this cat only. Text overlap only; a tie keeps the earlier record. */
+export function selectDemoCitation(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question: string, checkins: CompanionCheckin[] = []) {
+  const owned = new Map(observations.filter(item => item.petId === petId).map(item => [item.id, item]));
+  const sources: { item: DemoCitation; fields: (string | null | undefined)[] }[] = [];
+  for (const item of feedback) {
+    const observation = owned.get(item.observationId);
+    if (!observation) continue;
+    sources.push({ item: { source: 'reaction', at: memoryTime(item), sortId: item.id, observationId: item.observationId, feedback: item }, fields: [observation.question, ...observation.contextTags, item.action, item.reaction, item.note] });
+  }
+  for (const item of checkins) {
+    if (item.petId !== petId) continue;
+    sources.push({ item: { source: 'checkin', at: checkinTime(item), sortId: item.id, checkin: item }, fields: [checkinLabel(item), item.note] });
+  }
+  if (!sources.length) return null;
+  let best: { item: DemoCitation; score: number } | undefined;
+  for (const source of sources) {
+    const score = textOverlap(question, source.fields);
+    if (score <= 0) continue;
+    if (!best || score > best.score || (score === best.score && compareCitation(source.item, best.item) < 0)) best = { item: source.item, score };
+  }
+  if (best) return { citation: best.item, matched: true };
+  return { citation: sources.reduce((latest, source) => compareCitation(source.item, latest.item) > 0 ? source : latest).item, matched: false };
 }
-export function groundedDemoReply(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question = ''): ChatReply {
-  const chosen = selectDemoMemory(petId, observations, feedback, question);
-  const memory = chosen?.feedback;
-  return { id: createId(), text: demoReplyText(memory, chosen?.matched ?? false), citedObservationIds: memory ? [memory.observationId] : [] };
+function checkinQuote(item: CompanionCheckin) {
+  const label = checkinLabel(item);
+  const note = item.note?.trim();
+  if (note && note !== label) return `“${label}”라고 골랐고, “${note}”라고 적었어요`;
+  return `“${label}”라고 남겼어요`;
+}
+function demoReplyText(citation: DemoCitation | undefined, matched: boolean) {
+  if (!citation) return '아직 이 아이의 반응 기록이나 오늘 돌봄 기록이 없어요. 사진이나 울음 기록 뒤 해 본 행동과 이후 반응, 또는 오늘 돌봄을 남기면 여기서 다시 찾아볼 수 있어요.\n\n체험 모드에서는 AI가 답변하지 않아요.';
+  if (citation.source === 'reaction') {
+    const lead = matched ? '질문과 맞는 저장 기록을 찾았어요.' : '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요.';
+    return `${lead} “${citation.feedback.action}” 이후 “${citation.feedback.reaction}”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`;
+  }
+  const lead = matched ? '질문과 맞는 저장 기록을 찾았어요.' : '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 돌봄 기록만 보여 드려요.';
+  return `${lead} 오늘 돌봄에 ${checkinQuote(citation.checkin)}. 한 번의 기록으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`;
+}
+export function groundedDemoReply(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question = '', checkins: CompanionCheckin[] = []): ChatReply {
+  const chosen = selectDemoCitation(petId, observations, feedback, question, checkins);
+  const citation = chosen?.citation;
+  return {
+    id: createId(),
+    text: demoReplyText(citation, chosen?.matched ?? false),
+    citedObservationIds: citation?.source === 'reaction' ? [citation.observationId] : [],
+    citedCheckinIds: citation?.source === 'checkin' ? [citation.checkin.id] : [],
+  };
 }
 export function demoConversationsFor(data: DemoState, petId: string) {
   return data.conversations.filter(item => item.petId === petId).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
@@ -99,9 +146,9 @@ export function saveDemoConversation(petId: string, question: string, id: string
   return changeDemo(data => {
     const existing = data.conversations.find(item => item.id === id);
     if (existing) { if (existing.petId !== petId || existing.question !== text) throw new Error('IDEMPOTENCY_CONFLICT'); return existing; }
-    const reply = groundedDemoReply(petId, data.observations, data.feedback, text);
+    const reply = groundedDemoReply(petId, data.observations, data.feedback, text, data.checkins);
     const createdAt = now.toISOString();
-    const conversation: CompanionConversation = { id, petId, question: text, answer: reply.text, status: 'COMPLETED', citedObservationIds: reply.citedObservationIds, createdAt, completedAt: createdAt };
+    const conversation: CompanionConversation = { id, petId, question: text, answer: reply.text, status: 'COMPLETED', citedObservationIds: reply.citedObservationIds, citedCheckinIds: reply.citedCheckinIds, createdAt, completedAt: createdAt };
     data.conversations.push(conversation);
     return conversation;
   });
@@ -112,7 +159,8 @@ export function demoFromStorage(raw: string): DemoState {
   const parsed = JSON.parse(raw) as DemoState;
   if (parsed.version !== 1 || !Array.isArray(parsed.pets) || !Array.isArray(parsed.observations) || !Array.isArray(parsed.feedback)) throw new Error('INVALID_LOCAL_DATA');
   if (parsed.conversations != null && !Array.isArray(parsed.conversations)) throw new Error('INVALID_LOCAL_DATA');
-  return { ...parsed, checkins: parsed.checkins ?? [], checkinRequests: parsed.checkinRequests ?? {}, conversations: parsed.conversations ?? [] };
+  const conversations = (parsed.conversations ?? []).map(item => ({ ...item, citedObservationIds: Array.isArray(item.citedObservationIds) ? item.citedObservationIds : [], citedCheckinIds: Array.isArray(item.citedCheckinIds) ? item.citedCheckinIds : [] }));
+  return { ...parsed, checkins: parsed.checkins ?? [], checkinRequests: parsed.checkinRequests ?? {}, conversations };
 }
 /** Drops the process cache so the next read comes from the on-device demo file. */
 export function clearDemoMemory() { state = null; }

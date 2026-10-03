@@ -77,12 +77,13 @@ export default function Conversation() {
     <View style={[s.row, { marginBottom: 14 }]}>{companion.pets.data?.map(pet => <Chip key={pet.id} label={pet.name} selected={selectedPet?.id === pet.id} onPress={() => void companion.selectPet(pet.id)} />)}</View>
     {!selectedPet && <Empty title="먼저 우리 아이를 등록해 주세요" detail="아이별 기록을 바탕으로 대화를 이어가요."><Button title="우리 아이 등록하기" onPress={() => router.push('/pets/new')} /></Empty>}
     {selectedPet && <>
-      <Card><Text style={styles.prompt}>오늘 {selectedPet.name}에게 궁금한 점을 적어 주세요.</Text><Body muted>사진 기록과 보호자가 남긴 반응을 근거로, 확정하지 않는 말로 답해요.</Body></Card>
+      <Card><Text style={styles.prompt}>오늘 {selectedPet.name}에게 궁금한 점을 적어 주세요.</Text><Body muted>사진 기록, 오늘 돌봄, 보호자가 남긴 반응을 근거로, 확정하지 않는 말로 답해요.</Body></Card>
       <Field label="궁금한 점" value={message} onChangeText={value => { setMessage(value); setRequestId(newRequestId()); }} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} />
       <ErrorNote message={error || (pending.error ? errorMessage(pending.error) : null)} />
       <Button title={companion.demo ? '기록에서 찾아보기' : '기록을 바탕으로 물어보기'} busy={busy} disabled={!message.trim()} icon="send-outline" onPress={() => void send()} />
       {current && <Card accent><Text style={styles.question}>“{current.question}”</Text>{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{current.answer ?? '아직 답변이 준비되지 않았어요.'}</Body>}
         {citations.map((id, index) => <Pressable key={id} accessibilityRole="link" onPress={() => router.push(`/observations/${id}`)}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
+        {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => router.push(`/checkin?id=${id}`)}><Text style={styles.link}>근거가 된 오늘 돌봄 기록 {index + 1} 보기 →</Text></Pressable>)}
       </Card>}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}

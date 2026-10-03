@@ -11,7 +11,7 @@ export interface CompanionInference { id: string; observationId: string; status:
 export interface CompanionObservation { id: string; petId: string; kind: CompanionMediaKind; question: string | null; contextTags: string[]; status: CompanionObservationStatus; failureCode: string | null; createdAt: string; completedAt: string | null; media: CompanionMedia[]; inference: CompanionInference | null; feedback: CompanionFeedback[]; }
 export interface CompanionFeedbackInput { action: string; reaction: string; happenedAt?: string; note?: string; }
 export interface CompanionFeedback { id: string; observationId: string; action: string; reaction: string; note: string | null; happenedAt: string; createdAt: string; }
-export interface CompanionConversation { id: string; petId: string; question: string; answer: string | null; status: 'QUEUED' | 'COMPLETED' | 'FAILED'; citedObservationIds: string[]; createdAt: string; completedAt: string | null; }
+export interface CompanionConversation { id: string; petId: string; question: string; answer: string | null; status: 'QUEUED' | 'COMPLETED' | 'FAILED'; citedObservationIds: string[]; citedCheckinIds?: string[]; createdAt: string; completedAt: string | null; }
 export interface CompanionConsent { serviceStorage: boolean; researchTraining: boolean; updatedAt: string; }
 export interface CreateCompanionPetInput { name: string; confirmedTraits?: Record<string, unknown>; }
 export interface CreateCompanionObservationInput { petId: string; kind: CompanionMediaKind; question?: string; contextTags?: string[]; durationMs?: number; idempotencyKey: string; }
