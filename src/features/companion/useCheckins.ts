@@ -4,9 +4,9 @@ import { useCompanion } from './useCompanion';
 import { getDemo } from './demo';
 import { api, request } from '../../lib/api';
 import { deleteDemoCheckin, saveDemoCheckin, updateDemoCheckin } from './checkinStore';
+export { checkinLabels } from './daily';
 
 const base = '/pet-companion/checkins';
-export const checkinLabels = { PLAY: '놀아줬어요', MEAL: '식사를 챙겼어요', NOTE: '메모 남기기', CHECKED: '특이사항 없어요' } as const;
 export function useCheckins() {
   const companion = useCompanion();
   const client = useQueryClient();

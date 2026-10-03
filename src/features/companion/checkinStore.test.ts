@@ -1,6 +1,6 @@
 import { changeDemo, getDemo, initialDemo } from './demo';
 import { saveDemoCheckin, updateDemoCheckin, deleteDemoCheckin } from './checkinStore';
-import { dayKey, isToday, recentRecordedDays, resolveSelectedPet } from './daily';
+import { dayKey, isToday, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins } from './daily';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const draft = () => ({ petId: 'demo-momo', kind: 'PLAY' as const, note: '낚싯대 놀이', occurredAt: '2026-09-01T12:00:00.000Z', idempotencyKey: 'checkin-one' });
 beforeEach(async () => { await changeDemo(data => Object.assign(data, initialDemo())); });
@@ -50,4 +50,21 @@ it('falls back only when the selected pet is no longer available', () => {
   expect(resolveSelectedPet([...pets, other], 'other')?.name).toBe('보리');
   expect(resolveSelectedPet(pets, 'removed')?.id).toBe('demo-momo');
   expect(resolveSelectedPet([], 'removed')).toBeUndefined();
+});
+
+it('keeps only the selected cat check-ins from the current KST day, newest first', () => {
+  const now = new Date('2026-09-10T00:30:00Z');
+  const items = [
+    { id: 'yesterday', petId: 'demo-momo', kind: 'MEAL', note: '간식', occurredAt: '2026-09-09T14:59:59Z' },
+    { id: 'midnight', petId: 'demo-momo', kind: 'PLAY', note: '낚싯대', occurredAt: '2026-09-09T15:00:00Z' },
+    { id: 'later', petId: 'demo-momo', kind: 'CHECKED', note: null, occurredAt: '2026-09-10T14:59:59Z' },
+    { id: 'next-day', petId: 'demo-momo', kind: 'NOTE', note: '내일', occurredAt: '2026-09-10T15:00:00Z' },
+    { id: 'other', petId: 'other-cat', kind: 'PLAY', note: '다른 아이', occurredAt: '2026-09-10T01:00:00Z' },
+  ];
+  expect(todayCheckins(items, 'demo-momo', now).map(item => item.id)).toEqual(['later', 'midnight']);
+  expect(todayCheckins(items, 'missing', now)).toEqual([]);
+  expect(todayCheckins(items, null, now)).toEqual([]);
+  expect(todayCheckinSummary([])).toBeNull();
+  expect(todayCheckinSummary(todayCheckins(items, 'demo-momo', now))).toEqual({ title: '특이사항 없어요', detail: '메모 없이 남긴 보호자 기록이에요 · 다른 기록: 놀아줬어요' });
+  expect(todayCheckinSummary([{ kind: 'PLAY', note: '  낚싯대  ' }])).toEqual({ title: '놀아줬어요', detail: '낚싯대' });
 });
