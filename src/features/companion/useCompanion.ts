@@ -9,7 +9,7 @@ import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { deleteDemoFeedback, moveDemoFeedback, updateDemoFeedback, updateDemoFeedbackTime, type UpdateDemoFeedbackInput } from './reactionStore';
 import { deleteDemoObservation, moveDemoObservation, retargetDemoObservationCitation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime, type UpdateDemoObservationCaptionInput, type UpdateDemoObservationMediaInput } from './observationStore';
-import { deleteDemoConversation, moveDemoConversation, retargetDemoConversationCheckin, retargetDemoConversationObservation, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
+import { deleteDemoConversation, moveDemoConversation, retargetDemoConversationCheckin, retargetDemoConversationObservation, updateDemoConversationAnswer, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
 import { updateDemoPetProfile, type UpdateDemoPetProfileInput } from './petStore';
 import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations, reassignObservationDemoMedia, revokeDemoMediaUrls } from './webMediaStore';
 import { observationListPath, pageObservations } from './observationPages';
@@ -206,6 +206,13 @@ export function useCompanion() {
     await invalidate();
     return conversation;
   };
+  // Account mode has no route that rewrites a saved conversation answer. The client only creates and reads conversations. Do not pretend a server update happened.
+  const updateConversationAnswer = async (id: string, answer: string) => {
+    if (!demo) throw new Error('CONVERSATION_ANSWER_ACCOUNT_READONLY');
+    const conversation = await updateDemoConversationAnswer(id, answer);
+    await invalidate();
+    return conversation;
+  };
   // Account mode has no route that rewrites a saved conversation time. The client only creates and reads conversations. Do not pretend a server update happened.
   const updateConversationTime = async (id: string, createdAt: string) => {
     if (!demo) throw new Error('CONVERSATION_TIME_ACCOUNT_READONLY');
@@ -238,7 +245,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateFeedbackTime, moveFeedback, updateObservationCaption, updateObservationTime, replaceObservationMedia, moveObservation, retargetObservationCitation, removeObservation, removeConversation, updateConversationQuestion, updateConversationTime, moveConversation, retargetConversationObservation, retargetConversationCheckin, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateFeedbackTime, moveFeedback, updateObservationCaption, updateObservationTime, replaceObservationMedia, moveObservation, retargetObservationCitation, removeObservation, removeConversation, updateConversationQuestion, updateConversationAnswer, updateConversationTime, moveConversation, retargetConversationObservation, retargetConversationCheckin, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {

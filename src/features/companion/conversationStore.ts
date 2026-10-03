@@ -63,6 +63,28 @@ export async function updateDemoConversationQuestion(id: string, question: strin
   });
 }
 
+const ANSWER_LIMIT = 4000;
+
+/**
+ * Correct the saved answer sentence on one turn.
+ * The conversation id, question, and citation pointers stay on the same row.
+ * This does not create a conversation or a cat, and it does not call a model or write a new reply.
+ */
+export async function updateDemoConversationAnswer(id: string, answer: string): Promise<CompanionConversation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    if (typeof answer !== 'string') throw new Error('INVALID_CONVERSATION_ANSWER');
+    const text = answer.trim();
+    if (!text || text.length > ANSWER_LIMIT) throw new Error('INVALID_CONVERSATION_ANSWER');
+    const index = data.conversations.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('NOT_FOUND');
+    const current = data.conversations[index];
+    const updated: CompanionConversation = { ...current, answer: text };
+    data.conversations[index] = updated;
+    return updated;
+  });
+}
+
 function normalizeConversationTime(value: string, now: Date) {
   if (typeof value !== 'string' || !value.trim()) throw new Error('INVALID_CONVERSATION_TIME');
   const date = new Date(value.trim());

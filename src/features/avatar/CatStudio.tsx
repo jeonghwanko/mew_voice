@@ -78,7 +78,7 @@ export default function CatStudio() {
     return () => { live = false; };
   }, [focused, requestedConversationId, requestedPetId, pet?.id, pets, selectSavedPet, companion.demo]);
   const [picker, setPicker] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
-  const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState(false), [movingId, setMovingId] = useState<string | null>(null), [movePetId, setMovePetId] = useState(''), [editingQuestionId, setEditingQuestionId] = useState<string | null>(null), [questionDraft, setQuestionDraft] = useState(''), [timeEditingId, setTimeEditingId] = useState<string | null>(null), [timeDraft, setTimeDraft] = useState(''), [citationEdit, setCitationEdit] = useState<{ turnId: string; kind: 'observation' | 'checkin'; index: number; petId: string; targetId: string } | null>(null), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
+  const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState(false), [movingId, setMovingId] = useState<string | null>(null), [movePetId, setMovePetId] = useState(''), [editingQuestionId, setEditingQuestionId] = useState<string | null>(null), [questionDraft, setQuestionDraft] = useState(''), [editingAnswerId, setEditingAnswerId] = useState<string | null>(null), [answerDraft, setAnswerDraft] = useState(''), [timeEditingId, setTimeEditingId] = useState<string | null>(null), [timeDraft, setTimeDraft] = useState(''), [citationEdit, setCitationEdit] = useState<{ turnId: string; kind: 'observation' | 'checkin'; index: number; petId: string; targetId: string } | null>(null), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
   const [active, setActive] = useState<CompanionConversation | null>(null);
   const generation = useRef(0), requestId = useRef(newRequestId()), speechGeneration = useRef(0), mounted = useRef(true), threadRef = useRef<ScrollView>(null);
   const pending = useQuery({
@@ -117,7 +117,7 @@ export default function CatStudio() {
   const mood: CatMood = speaking ? 'speaking' : thinking ? 'thinking' : petting ? 'happy' : message ? 'listening' : 'idle';
   const stopSpeech = useCallback(() => { speechGeneration.current++; void Speech.stop(); setSpeaking(false); }, []);
   useEffect(() => {
-    generation.current++; setActive(null); setMessage(''); setError(''); setNotice(''); setBusy(false); setRemoving(false); setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); setTimeEditingId(null); setTimeDraft(''); setCitationEdit(null); stopSpeech(); requestId.current = newRequestId();
+    generation.current++; setActive(null); setMessage(''); setError(''); setNotice(''); setBusy(false); setRemoving(false); setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); setEditingAnswerId(null); setAnswerDraft(''); setTimeEditingId(null); setTimeDraft(''); setCitationEdit(null); stopSpeech(); requestId.current = newRequestId();
   }, [pet?.id, stopSpeech]);
   useEffect(() => {
     mounted.current = true; const requests = generation, voice = speechGeneration;
@@ -132,7 +132,7 @@ export default function CatStudio() {
   const send = async () => {
     if (!pet || !message.trim() || thinking) return;
     const token = ++generation.current;
-    stopSpeech(); setError(''); setBusy(true); setActive(null);
+    stopSpeech(); setError(''); setBusy(true); setActive(null); setEditingAnswerId(null); setAnswerDraft('');
     try {
       const result = await companion.ask(pet.id, message.trim(), requestId.current);
       if (token !== generation.current || !mounted.current) return;
@@ -168,13 +168,13 @@ export default function CatStudio() {
   const startMove = (id: string) => {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))); return; }
     if (!otherPets.length) return;
-    setEditingQuestionId(null); setQuestionDraft(''); setTimeEditingId(null); setTimeDraft(''); setCitationEdit(null); setMovingId(id); setMovePetId(otherPets[0].id); setError('');
+    setEditingQuestionId(null); setQuestionDraft(''); setEditingAnswerId(null); setAnswerDraft(''); setTimeEditingId(null); setTimeDraft(''); setCitationEdit(null); setMovingId(id); setMovePetId(otherPets[0].id); setError('');
   };
   const startQuestion = (id: string) => {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))); return; }
     const turn = turns.find(item => item.id === id);
     if (!turn) return;
-    setMovingId(null); setMovePetId(''); setTimeEditingId(null); setTimeDraft(''); setCitationEdit(null); setEditingQuestionId(id); setQuestionDraft(turn.question); setError('');
+    setMovingId(null); setMovePetId(''); setTimeEditingId(null); setTimeDraft(''); setCitationEdit(null); setEditingAnswerId(null); setAnswerDraft(''); setEditingQuestionId(id); setQuestionDraft(turn.question); setError('');
   };
   const cancelQuestion = () => { setEditingQuestionId(null); setQuestionDraft(''); setError(''); };
   const saveQuestion = async (id: string) => {
@@ -188,11 +188,31 @@ export default function CatStudio() {
       await refetchThreads();
     } catch (cause) { setError(errorMessage(cause)); } finally { setRemoving(false); }
   };
+  const startAnswer = (id: string) => {
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_ANSWER_ACCOUNT_READONLY'))); return; }
+    const turn = turns.find(item => item.id === id);
+    if (!turn?.answer?.trim() || turn.status !== 'COMPLETED') return;
+    stopSpeech();
+    setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); setTimeEditingId(null); setTimeDraft(''); setCitationEdit(null); setEditingAnswerId(id); setAnswerDraft(turn.answer ?? ''); setError('');
+  };
+  const cancelAnswer = () => { setEditingAnswerId(null); setAnswerDraft(''); setError(''); };
+  const saveAnswer = async (id: string) => {
+    const text = answerDraft.trim();
+    if (!text) return;
+    stopSpeech();
+    setRemoving(true); setError('');
+    try {
+      const updated = await companion.updateConversationAnswer(id, text);
+      setActive(prev => prev?.id === id ? updated : prev);
+      setEditingAnswerId(null); setAnswerDraft('');
+      await refetchThreads();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setRemoving(false); }
+  };
   const startTime = (id: string) => {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_TIME_ACCOUNT_READONLY'))); return; }
     const turn = turns.find(item => item.id === id);
     if (!turn) return;
-    setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); setCitationEdit(null); setTimeEditingId(id); setTimeDraft(recordedTimeText(turn.createdAt)); setError('');
+    setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); setEditingAnswerId(null); setAnswerDraft(''); setCitationEdit(null); setTimeEditingId(id); setTimeDraft(recordedTimeText(turn.createdAt)); setError('');
   };
   const cancelTime = () => { setTimeEditingId(null); setTimeDraft(''); setError(''); };
   const saveTime = async (id: string) => {
@@ -220,7 +240,7 @@ export default function CatStudio() {
       ? initialCitationChoice(records as ObservationChoice[], currentId, pets, item => item.createdAt)
       : initialCitationChoice(records as CheckinChoice[], currentId, pets, item => item.occurredAt);
     if (!picked) return;
-    setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); setTimeEditingId(null); setTimeDraft('');
+    setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); setEditingAnswerId(null); setAnswerDraft(''); setTimeEditingId(null); setTimeDraft('');
     setCitationEdit({ turnId, kind, index, ...picked }); setError('');
   };
   const chooseCitationPet = (petId: string) => {
@@ -327,7 +347,7 @@ export default function CatStudio() {
           <View style={styles.pickerHeader}><Text style={styles.headerTitle}>글로 대화하기</Text><Pressable accessibilityRole="button" accessibilityLabel="대화 접기" onPress={closeChat} style={styles.iconButton}><MewIcon name="close" /></Pressable></View>
           <View style={styles.bubbleHeader}><Text style={styles.bubbleLabel}>{companion.demo ? '기기 내 체험 · 실제 AI 답변 아님' : answer ? '기록을 바탕으로 한 AI 답변' : '오늘의 대화'}</Text>{thinking && <ActivityIndicator size="small" color={c.accent} />}{answer && <Pressable accessibilityRole="button" accessibilityLabel={speaking ? '최근 답변 읽기 정지' : '최근 답변 소리로 듣기'} onPress={() => void readAnswer()} style={styles.audioButton}><Ionicons name={speaking ? 'stop-circle-outline' : 'volume-medium-outline'} size={20} color={c.accent} /></Pressable>}</View>
           <ScrollView ref={threadRef} style={{ maxHeight: keyboard ? 140 : Math.min(420, Math.max(180, Math.round(height * 0.46))) }} contentContainerStyle={{ paddingBottom: 8, gap: 16 }} accessibilityLiveRegion="polite" onContentSizeChange={() => { if (!focusThread) threadRef.current?.scrollToEnd({ animated: false }); }}>
-            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} focusId={focusThread} onFocusOffset={y => threadRef.current?.scrollTo({ y, animated: false })} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={(id, turnId) => navigateFromChat(citedObservationHref(id, turnId, pet?.id, 'home'))} onCheckin={(id, turnId) => navigateFromChat(citedCheckinHref(id, turnId, pet?.id, 'home'))} demo={companion.demo} petsKnown={!!pets} otherPets={otherPets} movingId={movingId} movePetId={movePetId} deleting={removing} editingId={editingQuestionId} questionDraft={questionDraft} onQuestionDraft={setQuestionDraft} onDelete={removeTurn} onStartMove={startMove} onMovePet={id => { if (!removing) setMovePetId(id); }} onSaveMove={id => void saveMove(id)} onCancelMove={cancelMove} onStartQuestion={startQuestion} onSaveQuestion={id => void saveQuestion(id)} onCancelQuestion={cancelQuestion} timeEditingId={timeEditingId} timeDraft={timeDraft} onTimeDraft={setTimeDraft} onStartTime={startTime} onSaveTime={id => void saveTime(id)} onCancelTime={cancelTime} citationEditing={citationEdit} observations={citationCatalog.data?.observations ?? null} checkins={citationCatalog.data?.checkins ?? null} citationPets={pets ?? []} onStartCitation={startCitation} onCitationPet={chooseCitationPet} onCitationTarget={id => { if (!removing && citationEdit) setCitationEdit({ ...citationEdit, targetId: id }); }} onSaveCitation={id => void saveCitation(id)} onCancelCitation={cancelCitation} />
+            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} focusId={focusThread} onFocusOffset={y => threadRef.current?.scrollTo({ y, animated: false })} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={(id, turnId) => navigateFromChat(citedObservationHref(id, turnId, pet?.id, 'home'))} onCheckin={(id, turnId) => navigateFromChat(citedCheckinHref(id, turnId, pet?.id, 'home'))} demo={companion.demo} petsKnown={!!pets} otherPets={otherPets} movingId={movingId} movePetId={movePetId} deleting={removing} editingId={editingQuestionId} questionDraft={questionDraft} onQuestionDraft={setQuestionDraft} onDelete={removeTurn} onStartMove={startMove} onMovePet={id => { if (!removing) setMovePetId(id); }} onSaveMove={id => void saveMove(id)} onCancelMove={cancelMove} onStartQuestion={startQuestion} onSaveQuestion={id => void saveQuestion(id)} onCancelQuestion={cancelQuestion} editingAnswerId={editingAnswerId} answerDraft={answerDraft} onAnswerDraft={setAnswerDraft} onStartAnswer={startAnswer} onSaveAnswer={id => void saveAnswer(id)} onCancelAnswer={cancelAnswer} timeEditingId={timeEditingId} timeDraft={timeDraft} onTimeDraft={setTimeDraft} onStartTime={startTime} onSaveTime={id => void saveTime(id)} onCancelTime={cancelTime} citationEditing={citationEdit} observations={citationCatalog.data?.observations ?? null} checkins={citationCatalog.data?.checkins ?? null} citationPets={pets ?? []} onStartCitation={startCitation} onCitationPet={chooseCitationPet} onCitationTarget={id => { if (!removing && citationEdit) setCitationEdit({ ...citationEdit, targetId: id }); }} onSaveCitation={id => void saveCitation(id)} onCancelCitation={cancelCitation} />
           </ScrollView>
           {(error || appearance.error || pending.error || savedThreads.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{error || appearance.error || errorMessage(pending.error ?? savedThreads.error ?? companion.pets.error)}</Text> : null}
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}
@@ -353,7 +373,7 @@ function turnText(turn: HomeConversationTurn) {
   if (turn.status === 'FAILED') return '답변을 준비하지 못했어요. 다시 질문해 주세요.';
   return turn.answer?.trim() || '아직 답변이 준비되지 않았어요.';
 }
-function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin, demo, petsKnown, otherPets, movingId, movePetId, deleting, editingId, questionDraft, onQuestionDraft, onDelete, onStartMove, onMovePet, onSaveMove, onCancelMove, onStartQuestion, onSaveQuestion, onCancelQuestion, timeEditingId, timeDraft, onTimeDraft, onStartTime, onSaveTime, onCancelTime, citationEditing, observations, checkins, citationPets, onStartCitation, onCitationPet, onCitationTarget, onSaveCitation, onCancelCitation }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void; demo: boolean; petsKnown: boolean; otherPets: { id: string; name: string }[]; movingId: string | null; movePetId: string; deleting: boolean; editingId: string | null; questionDraft: string; onQuestionDraft: (value: string) => void; onDelete: (id: string) => void; onStartMove: (id: string) => void; onMovePet: (id: string) => void; onSaveMove: (id: string) => void; onCancelMove: () => void; onStartQuestion: (id: string) => void; onSaveQuestion: (id: string) => void; onCancelQuestion: () => void; timeEditingId: string | null; timeDraft: string; onTimeDraft: (value: string) => void; onStartTime: (id: string) => void; onSaveTime: (id: string) => void; onCancelTime: () => void; citationEditing: { turnId: string; kind: 'observation' | 'checkin'; index: number; petId: string; targetId: string } | null; observations: ObservationChoice[] | null; checkins: CheckinChoice[] | null; citationPets: { id: string; name: string }[]; onStartCitation: (turnId: string, kind: 'observation' | 'checkin', index: number) => void; onCitationPet: (petId: string) => void; onCitationTarget: (id: string) => void; onSaveCitation: (turnId: string) => void; onCancelCitation: () => void }) {
+function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin, demo, petsKnown, otherPets, movingId, movePetId, deleting, editingId, questionDraft, onQuestionDraft, onDelete, onStartMove, onMovePet, onSaveMove, onCancelMove, onStartQuestion, onSaveQuestion, onCancelQuestion, editingAnswerId, answerDraft, onAnswerDraft, onStartAnswer, onSaveAnswer, onCancelAnswer, timeEditingId, timeDraft, onTimeDraft, onStartTime, onSaveTime, onCancelTime, citationEditing, observations, checkins, citationPets, onStartCitation, onCitationPet, onCitationTarget, onSaveCitation, onCancelCitation }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void; demo: boolean; petsKnown: boolean; otherPets: { id: string; name: string }[]; movingId: string | null; movePetId: string; deleting: boolean; editingId: string | null; questionDraft: string; onQuestionDraft: (value: string) => void; onDelete: (id: string) => void; onStartMove: (id: string) => void; onMovePet: (id: string) => void; onSaveMove: (id: string) => void; onCancelMove: () => void; onStartQuestion: (id: string) => void; onSaveQuestion: (id: string) => void; onCancelQuestion: () => void; editingAnswerId: string | null; answerDraft: string; onAnswerDraft: (value: string) => void; onStartAnswer: (id: string) => void; onSaveAnswer: (id: string) => void; onCancelAnswer: () => void; timeEditingId: string | null; timeDraft: string; onTimeDraft: (value: string) => void; onStartTime: (id: string) => void; onSaveTime: (id: string) => void; onCancelTime: () => void; citationEditing: { turnId: string; kind: 'observation' | 'checkin'; index: number; petId: string; targetId: string } | null; observations: ObservationChoice[] | null; checkins: CheckinChoice[] | null; citationPets: { id: string; name: string }[]; onStartCitation: (turnId: string, kind: 'observation' | 'checkin', index: number) => void; onCitationPet: (petId: string) => void; onCitationTarget: (id: string) => void; onSaveCitation: (turnId: string) => void; onCancelCitation: () => void }) {
   if (loading) return <Text style={styles.bubbleText}>이전 대화를 확인하고 있어요.</Text>;
   if (failed) return <Text style={styles.bubbleText}>이전 대화를 불러오지 못했어요.</Text>;
   if (!turns.length && !thinking) return <Text style={styles.bubbleText}>{petName ? `${petName}와 어떤 이야기를 나눠 볼까요?` : '반가워요. 나만의 고양이를 만나 보세요.'}</Text>;
@@ -368,7 +388,15 @@ function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocu
         <Text style={styles.turnQuestion}>“{turn.question}”</Text>
         {demo ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={() => onStartQuestion(turn.id)} style={styles.citation}><Text style={styles.citationText}>질문 수정</Text></Pressable> : null}
       </>}
-      <Text style={styles.bubbleText}>{turnText(turn)}</Text>
+      {editingAnswerId === turn.id ? <View>
+        <Text style={styles.accountNote}>저장된 답 문장만 고쳐요. 같은 대화의 질문과 인용은 그대로 두어요. 답을 다시 만들지 않아요. 고양이가 다시 답한 것이 아니에요.</Text>
+        <TextInput accessibilityLabel="저장된 답" value={answerDraft} editable={!deleting} maxLength={4000} multiline onChangeText={onAnswerDraft} style={styles.questionInput} />
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting || !answerDraft.trim() }} disabled={deleting || !answerDraft.trim()} onPress={() => onSaveAnswer(turn.id)} style={styles.citation}><Text style={styles.citationText}>답변 저장</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={onCancelAnswer} style={styles.citation}><Text style={styles.citationText}>답변 수정 취소</Text></Pressable>
+      </View> : <>
+        <Text style={styles.bubbleText}>{turnText(turn)}</Text>
+        {demo && turn.status === 'COMPLETED' && turn.answer?.trim() ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={() => onStartAnswer(turn.id)} style={styles.citation}><Text style={styles.citationText}>답변 수정</Text></Pressable> : null}
+      </>}
       {(turn.citedObservationIds ?? []).map((id, index) => <View key={`${index}-${id}`}>
         <Pressable accessibilityRole="link" onPress={() => onObservation(id, turn.id)} style={styles.citation}><Text style={styles.citationText}>참고한 기록 {index + 1} 보기 →</Text></Pressable>
         {demo && hasOtherChoice(observations, id) ? <InlineCitationSwitch open={citationEditing?.turnId === turn.id && citationEditing.kind === 'observation' && citationEditing.index === index} busy={deleting} note="이미 있는 다른 관찰로만 바꿉니다. 같은 대화의 질문과 답변 본문은 그대로 두고, 이 인용만 그 기록으로 바꿉니다. 다른 인용은 그대로 두어요. 답을 다시 만들지 않아요." closedTitle={`관찰 인용 ${index + 1}을 다른 기록으로 바꾸기`} saveTitle="이 관찰로 바꾸기" pets={petsWithOtherChoice(observations ?? [], id, citationPets)} records={recentChoices(choicesForPet(observations ?? [], citationEditing?.petId ?? '', id), item => item.createdAt)} petId={citationEditing?.petId ?? ''} targetId={citationEditing?.targetId ?? ''} label={item => observationChoiceLabel(item, recentChoices(choicesForPet(observations ?? [], citationEditing?.petId ?? '', id), row => row.createdAt))} onStart={() => onStartCitation(turn.id, 'observation', index)} onPet={onCitationPet} onTarget={onCitationTarget} onSave={() => onSaveCitation(turn.id)} onCancel={onCancelCitation} /> : null}
@@ -399,6 +427,7 @@ function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocu
     {demo && petsKnown && otherPets.length === 0 && turns.length ? <View><Text style={styles.turnQuestion}>어느 아이의 기록인가요</Text><Text style={styles.accountNote}>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Text><Text style={styles.accountNote}>등록된 다른 아이가 없어서 옮길 수 없어요.</Text></View> : null}
     {!demo && turns.some(turn => (turn.citedObservationIds?.length ?? 0) > 0 || (turn.citedCheckinIds?.length ?? 0) > 0) ? <Text style={styles.accountNote}>이 계정에 남긴 대화의 인용은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text> : null}
     {!demo && turns.length ? <Text style={styles.accountNote}>이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text> : null}
+    {!demo && turns.length ? <Text style={styles.accountNote}>이 계정에 남긴 대화의 답변은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text> : null}
     {!demo && turns.length ? <Text style={styles.accountNote}>이 계정에 남긴 대화 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text> : null}
     {!demo && turns.length ? <Text style={styles.accountNote}>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Text> : null}
     {!demo && turns.length ? <View><Text style={styles.turnQuestion}>어느 아이의 기록인가요</Text><Text style={styles.accountNote}>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Text><Text style={styles.accountNote}>이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text></View> : null}

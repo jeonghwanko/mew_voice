@@ -36,6 +36,8 @@ export default function Conversation() {
   const [movePetId, setMovePetId] = useState('');
   const [editingQuestion, setEditingQuestion] = useState(false);
   const [questionDraft, setQuestionDraft] = useState('');
+  const [editingAnswer, setEditingAnswer] = useState(false);
+  const [answerDraft, setAnswerDraft] = useState('');
   const [timeEditing, setTimeEditing] = useState(false);
   const [timeText, setTimeText] = useState('');
   const [citationEdit, setCitationEdit] = useState<{ kind: 'observation' | 'checkin'; index: number; petId: string; targetId: string } | null>(null);
@@ -70,7 +72,7 @@ export default function Conversation() {
   }, [companion.demo, requestedConversationId, requestedPetId, pets.data, selectedPet?.id, selectPet]);
   useEffect(() => {
     appliedConversation.current = null;
-    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setCitationEdit(null);
+    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(false); setQuestionDraft(''); setEditingAnswer(false); setAnswerDraft(''); setTimeEditing(false); setTimeText(''); setCitationEdit(null);
   }, [selectedPet?.id]);
 
   const history = useQuery({
@@ -134,7 +136,7 @@ export default function Conversation() {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))); return; }
     const choices = (companion.pets.data ?? []).filter(pet => pet.id !== current.petId);
     if (!choices.length) return;
-    setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setCitationEdit(null); setMovingPet(true); setMovePetId(choices[0].id); setError('');
+    setEditingQuestion(false); setQuestionDraft(''); setEditingAnswer(false); setAnswerDraft(''); setTimeEditing(false); setTimeText(''); setCitationEdit(null); setMovingPet(true); setMovePetId(choices[0].id); setError('');
   };
   const cancelMove = () => { setMovingPet(false); setMovePetId(''); setError(''); };
   const saveMove = async () => {
@@ -154,7 +156,7 @@ export default function Conversation() {
   const startQuestion = () => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))); return; }
-    setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); setEditingQuestion(true); setQuestionDraft(current.question); setError('');
+    setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); setEditingAnswer(false); setAnswerDraft(''); setEditingQuestion(true); setQuestionDraft(current.question); setError('');
   };
   const cancelQuestion = () => { setEditingQuestion(false); setQuestionDraft(''); setError(''); };
   const saveQuestion = async () => {
@@ -169,11 +171,29 @@ export default function Conversation() {
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
 
+  const startAnswer = () => {
+    if (!current?.answer?.trim()) return;
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_ANSWER_ACCOUNT_READONLY'))); return; }
+    setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); setEditingAnswer(true); setAnswerDraft(current.answer); setError('');
+  };
+  const cancelAnswer = () => { setEditingAnswer(false); setAnswerDraft(''); setError(''); };
+  const saveAnswer = async () => {
+    if (!current || !answerDraft.trim()) return;
+    const id = current.id;
+    setBusy(true); setError('');
+    try {
+      const updated = await companion.updateConversationAnswer(id, answerDraft);
+      setActive(prev => prev?.id === id ? updated : prev);
+      setEditingAnswer(false); setAnswerDraft('');
+      await history.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+
 
   const startTime = () => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_TIME_ACCOUNT_READONLY'))); return; }
-    setEditingQuestion(false); setQuestionDraft(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); setTimeEditing(true); setTimeText(recordedTimeText(current.createdAt)); setError('');
+    setEditingQuestion(false); setQuestionDraft(''); setEditingAnswer(false); setAnswerDraft(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); setTimeEditing(true); setTimeText(recordedTimeText(current.createdAt)); setError('');
   };
   const cancelTime = () => { setTimeEditing(false); setTimeText(''); setError(''); };
   const saveTime = async () => {
@@ -193,7 +213,7 @@ export default function Conversation() {
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
 
-  const clearOtherEdits = () => { setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); };
+  const clearOtherEdits = () => { setEditingQuestion(false); setQuestionDraft(''); setEditingAnswer(false); setAnswerDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); };
   const startCitation = (kind: 'observation' | 'checkin', index: number) => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_CITATION_ACCOUNT_READONLY'))); return; }
@@ -256,6 +276,7 @@ export default function Conversation() {
 
   const send = async () => {
     if (!selectedPet || !message.trim()) return;
+    setEditingAnswer(false); setAnswerDraft('');
     setBusy(true); setError('');
     try {
       const conversation = await companion.ask(selectedPet.id, message.trim(), requestId);
@@ -273,7 +294,7 @@ export default function Conversation() {
       <Field label="궁금한 점" value={message} onChangeText={value => { setMessage(value); setRequestId(newRequestId()); }} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} />
       <ErrorNote message={error || (pending.error ? errorMessage(pending.error) : null)} />
       <Button title={companion.demo ? '기록에서 찾아보기' : '기록을 바탕으로 물어보기'} busy={busy} disabled={!message.trim()} icon="send-outline" onPress={() => void send()} />
-      {current && <Card accent>{editingQuestion ? <><Body muted>질문 문장만 고쳐요. 같은 대화의 답변과 인용은 그대로 두어요. 답을 다시 만들지 않아요.</Body><Field label="궁금한 점" value={questionDraft} onChangeText={setQuestionDraft} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} /><Button title="질문 저장" busy={busy} disabled={busy || !questionDraft.trim()} onPress={() => void saveQuestion()} /><Button title="질문 수정 취소" secondary disabled={busy} onPress={cancelQuestion} /></> : <><Text style={styles.question}>“{current.question}”</Text>{companion.demo ? <Button title="질문 수정" secondary disabled={busy} onPress={startQuestion} /> : <Body muted>이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}
+      {current && <Card accent>{editingQuestion ? <><Body muted>질문 문장만 고쳐요. 같은 대화의 답변과 인용은 그대로 두어요. 답을 다시 만들지 않아요.</Body><Field label="궁금한 점" value={questionDraft} onChangeText={setQuestionDraft} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} /><Button title="질문 저장" busy={busy} disabled={busy || !questionDraft.trim()} onPress={() => void saveQuestion()} /><Button title="질문 수정 취소" secondary disabled={busy} onPress={cancelQuestion} /></> : <><Text style={styles.question}>“{current.question}”</Text>{companion.demo ? <Button title="질문 수정" secondary disabled={busy} onPress={startQuestion} /> : <Body muted>이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}{editingAnswer ? <><Body muted>저장된 답 문장만 고쳐요. 같은 대화의 질문과 인용은 그대로 두어요. 답을 다시 만들지 않아요. 고양이가 다시 답한 것이 아니에요.</Body><Field label="저장된 답" value={answerDraft} onChangeText={setAnswerDraft} placeholder="저장된 답을 다시 적어 주세요" multiline maxLength={4000} editable={!busy} /><Button title="답변 저장" busy={busy} disabled={busy || !answerDraft.trim()} onPress={() => void saveAnswer()} /><Button title="답변 수정 취소" secondary disabled={busy} onPress={cancelAnswer} /></> : current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}{!editingAnswer && companion.demo && current.status === 'COMPLETED' && current.answer?.trim() ? <Button title="답변 수정" secondary disabled={busy} onPress={startAnswer} /> : null}{!editingAnswer && !companion.demo ? <Body muted>이 계정에 남긴 대화의 답변은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body> : null}
         {citations.map((id, index) => <Pressable key={`${index}-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedObservationHref(id, current.id, selectedPet.id))}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
         {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${index}-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedCheckinHref(id, current.id, selectedPet.id))}><Text style={styles.link}>{conversationCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
         {companion.demo ? <Button title="이 대화 삭제" danger disabled={busy} onPress={removeThis} /> : <Body muted>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Body>}
@@ -305,7 +326,7 @@ export default function Conversation() {
       </Card> : null}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
-      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => { setActive(item); if (item.id !== current?.id) { setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); } }} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {recordedTimeText(item.createdAt)}</Text></Pressable>; })}
+      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => { setActive(item); if (item.id !== current?.id) { setEditingQuestion(false); setQuestionDraft(''); setEditingAnswer(false); setAnswerDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); } }} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {recordedTimeText(item.createdAt)}</Text></Pressable>; })}
       {!history.isLoading && !history.data?.items.length && (companion.demo
         ? <Empty title="아직 나눈 이야기가 없어요" detail="질문을 남기면 이 기기에만 기억돼요. 나갔다가 다시 들어와도 같은 질문과 답변을 읽을 수 있어요. 실제 AI 답변은 아니에요." />
         : <Empty title="아직 대화가 없어요" detail="첫 질문을 남기면 이곳에 기억돼요." />)}

@@ -1,6 +1,6 @@
 import type { CompanionCheckin, CompanionConversation, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, type FeedbackRecord } from './demo';
-import { conversationOpenPet, deleteDemoConversation, findDemoConversation, moveDemoConversation, retargetDemoConversationCheckin, retargetDemoConversationObservation, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
+import { conversationOpenPet, deleteDemoConversation, findDemoConversation, moveDemoConversation, retargetDemoConversationCheckin, retargetDemoConversationObservation, updateDemoConversationAnswer, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
 import { citedCareGoneText, citedCaresForAnswer, citedReactionFromFeedback, citedReactionGoneText, citedReactionsForAnswer, dayKey, presentConversationAnswer, resolveCitedReactionMap, type CitedCareRecord } from './daily';
 import { diaryConversationRows } from './diaryTimeline';
 import { homeConversationThread } from './homeConversation';
@@ -182,6 +182,97 @@ it('rewrites one saved question in place and keeps the id, answer, and citations
   expect(frozen?.answer).toBe(answer);
   expect(errorMessage(new Error('INVALID_CONVERSATION_QUESTION'))).toBe('질문 문장을 확인해 주세요.');
   expect(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
+});
+
+it('rewrites one saved answer in place and keeps the id, question, and citations', async () => {
+  const now = new Date('2026-09-10T03:00:00Z');
+  const answer = '질문과 맞는 저장 기록을 찾았어요. 2026년 9월 2일 돌봄에 “놀아줬어요”라고 골랐고, “낚싯대로 놀았어요”라고 적었어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const editedAnswer = '보호자가 저장한 문장을 다시 적어요. 2026년 9월 2일 돌봄에 “놀아줬어요”라고 골랐고, “낚싯대로 놀았어요”라고 적었어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const kept = turn('thread-keep', 'demo-momo', '나중에 남긴 질문', '2026-09-03T00:00:00Z');
+  const edited = turn('thread-wrong', 'demo-momo', '잘못 저장한 질문', '2026-09-02T00:00:00Z');
+  edited.answer = answer;
+  edited.completedAt = '2026-09-02T00:05:00Z';
+  const other = turn('thread-other', 'demo-nabi', '다른 아이 질문', '2026-09-02T12:00:00Z');
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [observation('obs-1'), observation('obs-2', 'demo-nabi')];
+    data.feedback = [reaction('on-1', 'obs-1')];
+    data.checkins = [checkin()];
+    data.conversations = [kept, edited, other];
+  });
+  const before = await getDemo();
+  const result = await updateDemoConversationAnswer('thread-wrong', `  ${editedAnswer}  `);
+  const state = await getDemo();
+  const stored = await findDemoConversation('thread-wrong');
+  expect(result).toEqual({ ...edited, answer: editedAnswer });
+  expect(stored).toEqual(result);
+  expect(stored?.id).toBe('thread-wrong');
+  expect(stored?.question).toBe('잘못 저장한 질문');
+  expect(stored?.answer).toBe(editedAnswer);
+  expect(stored?.citedObservationIds).toEqual(['obs-1']);
+  expect(stored?.citedCheckinIds).toEqual(['care-1']);
+  expect(stored?.petId).toBe('demo-momo');
+  expect(stored?.status).toBe('COMPLETED');
+  expect(stored?.createdAt).toBe(edited.createdAt);
+  expect(stored?.completedAt).toBe('2026-09-02T00:05:00Z');
+  expect(state.conversations).toHaveLength(before.conversations.length);
+  expect(state.conversations.map(item => item.id)).toEqual(['thread-keep', 'thread-wrong', 'thread-other']);
+  expect(state.conversations.find(item => item.id === 'thread-keep')).toEqual(kept);
+  expect(state.conversations.find(item => item.id === 'thread-other')).toEqual(other);
+  expect(homeConversationThread(state.conversations, 'demo-momo').map(item => item.id)).toEqual(['thread-wrong', 'thread-keep']);
+  expect(homeConversationThread(state.conversations, 'demo-momo').find(item => item.id === 'thread-wrong')?.question).toBe('잘못 저장한 질문');
+  expect(homeConversationThread(state.conversations, 'demo-momo').find(item => item.id === 'thread-wrong')?.answer).toBe(editedAnswer);
+  expect(diaryConversationRows(state.conversations, 'demo-momo').find(item => item.id === 'conversation-thread-wrong')).toMatchObject({
+    label: '잘못 저장한 질문',
+    note: editedAnswer,
+    target: '/(tabs)/conversation?conversationId=thread-wrong',
+  });
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  expect(state.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2']);
+  expect(state.feedback.map(item => item.id)).toEqual(['on-1']);
+  expect(state.checkins.map(item => item.id)).toEqual(['care-1']);
+  await changeDemo(data => {
+    const care = data.checkins.find(item => item.id === 'care-1');
+    if (care) care.note = '다른 장난감으로 놀았어요';
+    const savedReaction = data.feedback.find(item => item.id === 'on-1');
+    if (savedReaction) savedReaction.reaction = '가만히 있었어요';
+  });
+  const afterRecords = await findDemoConversation('thread-wrong');
+  expect(afterRecords?.id).toBe('thread-wrong');
+  expect(afterRecords?.answer).toBe(editedAnswer);
+  expect(afterRecords?.answer).toContain('낚싯대로 놀았어요');
+  expect(afterRecords?.answer).toContain('따라왔어요');
+  expect(afterRecords?.citedObservationIds).toEqual(['obs-1']);
+  expect(afterRecords?.citedCheckinIds).toEqual(['care-1']);
+  expect((await getDemo()).conversations).toHaveLength(3);
+  const moments = new Map<string, CitedCareRecord>([
+    ['care-1', { status: 'saved', occurredAt: '2026-09-02T00:00:00Z', kind: 'PLAY', note: '다른 장난감으로 놀았어요' }],
+  ]);
+  const reactions = new Map([['obs-1', { status: 'saved' as const, action: '놀아줬어요', reaction: '가만히 있었어요' }]]);
+  const shown = presentConversationAnswer(afterRecords?.answer, citedCaresForAnswer(afterRecords?.citedCheckinIds, moments), citedReactionsForAnswer(afterRecords?.citedObservationIds, reactions), now);
+  expect(shown).toContain('보호자가 저장한 문장을 다시 적어요');
+  expect(shown).toContain('2026년 9월 2일 돌봄에 “놀아줬어요”라고 골랐고, “다른 장난감으로 놀았어요”라고 적었어요');
+  expect(shown).toContain('“놀아줬어요” 이후 “가만히 있었어요”라고 남겼어요');
+  expect(shown).not.toContain('낚싯대로 놀았어요');
+  expect(shown).not.toContain('따라왔어요');
+  await expect(updateDemoConversationAnswer('thread-wrong', '   ')).rejects.toThrow('INVALID_CONVERSATION_ANSWER');
+  await expect(updateDemoConversationAnswer('thread-wrong', '가'.repeat(4001))).rejects.toThrow('INVALID_CONVERSATION_ANSWER');
+  await expect(updateDemoConversationAnswer('missing', '다시 적은 답')).rejects.toThrow('NOT_FOUND');
+  const afterReject = await getDemo();
+  expect(afterReject.conversations.find(item => item.id === 'thread-wrong')?.answer).toBe(editedAnswer);
+  expect(afterReject.conversations.find(item => item.id === 'thread-wrong')?.question).toBe('잘못 저장한 질문');
+  expect(afterReject.conversations.find(item => item.id === 'thread-wrong')?.citedCheckinIds).toEqual(['care-1']);
+  expect(afterReject.conversations).toHaveLength(3);
+  expect(afterReject.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(updateDemoConversationAnswer('thread-wrong', '동의 없는 수정')).rejects.toThrow('CONSENT_REQUIRED');
+  const frozen = await findDemoConversation('thread-wrong');
+  expect(frozen?.question).toBe('잘못 저장한 질문');
+  expect(frozen?.answer).toBe(editedAnswer);
+  expect(frozen?.citedObservationIds).toEqual(['obs-1']);
+  expect(frozen?.citedCheckinIds).toEqual(['care-1']);
+  expect(errorMessage(new Error('INVALID_CONVERSATION_ANSWER'))).toBe('답변 문장을 확인해 주세요.');
+  expect(errorMessage(new Error('CONVERSATION_ANSWER_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화의 답변은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });
 
 it('corrects one conversation time in place so the diary follows the new KST day', async () => {
