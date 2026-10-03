@@ -28,6 +28,8 @@ export default function Conversation() {
   const [requestId, setRequestId] = useState(newRequestId);
   const [movingPet, setMovingPet] = useState(false);
   const [movePetId, setMovePetId] = useState('');
+  const [editingQuestion, setEditingQuestion] = useState(false);
+  const [questionDraft, setQuestionDraft] = useState('');
   const appliedConversation = useRef<string | null>(null);
   const alignedConversation = useRef<string | null>(null);
   const selectedPet = companion.activePet;
@@ -59,7 +61,7 @@ export default function Conversation() {
   }, [companion.demo, requestedConversationId, requestedPetId, pets.data, selectedPet?.id, selectPet]);
   useEffect(() => {
     appliedConversation.current = null;
-    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId('');
+    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(false); setQuestionDraft('');
   }, [selectedPet?.id]);
 
   const history = useQuery({
@@ -130,6 +132,24 @@ export default function Conversation() {
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
 
+  const startQuestion = () => {
+    if (!current) return;
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))); return; }
+    setEditingQuestion(true); setQuestionDraft(current.question); setError('');
+  };
+  const cancelQuestion = () => { setEditingQuestion(false); setQuestionDraft(''); setError(''); };
+  const saveQuestion = async () => {
+    if (!current || !questionDraft.trim()) return;
+    const id = current.id;
+    setBusy(true); setError('');
+    try {
+      const updated = await companion.updateConversationQuestion(id, questionDraft);
+      setActive(prev => prev?.id === id ? updated : prev);
+      setEditingQuestion(false); setQuestionDraft('');
+      await history.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+
   const removeThis = () => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_ACCOUNT_READONLY'))); return; }
@@ -165,7 +185,7 @@ export default function Conversation() {
       <Field label="궁금한 점" value={message} onChangeText={value => { setMessage(value); setRequestId(newRequestId()); }} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} />
       <ErrorNote message={error || (pending.error ? errorMessage(pending.error) : null)} />
       <Button title={companion.demo ? '기록에서 찾아보기' : '기록을 바탕으로 물어보기'} busy={busy} disabled={!message.trim()} icon="send-outline" onPress={() => void send()} />
-      {current && <Card accent><Text style={styles.question}>“{current.question}”</Text>{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}
+      {current && <Card accent>{editingQuestion ? <><Body muted>질문 문장만 고쳐요. 같은 대화의 답변과 인용은 그대로 두어요. 답을 다시 만들지 않아요.</Body><Field label="궁금한 점" value={questionDraft} onChangeText={setQuestionDraft} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} /><Button title="질문 저장" busy={busy} disabled={busy || !questionDraft.trim()} onPress={() => void saveQuestion()} /><Button title="질문 수정 취소" secondary disabled={busy} onPress={cancelQuestion} /></> : <><Text style={styles.question}>“{current.question}”</Text>{companion.demo ? <Button title="질문 수정" secondary disabled={busy} onPress={startQuestion} /> : <Body muted>이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}
         {citations.map((id, index) => <Pressable key={id} accessibilityRole="link" onPress={() => current && router.push(citedObservationHref(id, current.id, selectedPet.id))}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
         {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedCheckinHref(id, current.id, selectedPet.id))}><Text style={styles.link}>{conversationCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
         {companion.demo ? <Button title="이 대화 삭제" danger disabled={busy} onPress={removeThis} /> : <Body muted>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Body>}
@@ -181,7 +201,7 @@ export default function Conversation() {
       </Card> : null}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
-      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => setActive(item)} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>; })}
+      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => { setActive(item); if (item.id !== current?.id) { setEditingQuestion(false); setQuestionDraft(''); } }} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>; })}
       {!history.isLoading && !history.data?.items.length && (companion.demo
         ? <Empty title="아직 나눈 이야기가 없어요" detail="질문을 남기면 이 기기에만 기억돼요. 나갔다가 다시 들어와도 같은 질문과 답변을 읽을 수 있어요. 실제 AI 답변은 아니에요." />
         : <Empty title="아직 대화가 없어요" detail="첫 질문을 남기면 이곳에 기억돼요." />)}

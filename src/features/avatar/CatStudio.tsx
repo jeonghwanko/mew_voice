@@ -76,7 +76,7 @@ export default function CatStudio() {
     return () => { live = false; };
   }, [focused, requestedConversationId, requestedPetId, pet?.id, pets, selectSavedPet, companion.demo]);
   const [picker, setPicker] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
-  const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState(false), [movingId, setMovingId] = useState<string | null>(null), [movePetId, setMovePetId] = useState(''), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
+  const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState(false), [movingId, setMovingId] = useState<string | null>(null), [movePetId, setMovePetId] = useState(''), [editingQuestionId, setEditingQuestionId] = useState<string | null>(null), [questionDraft, setQuestionDraft] = useState(''), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
   const [active, setActive] = useState<CompanionConversation | null>(null);
   const generation = useRef(0), requestId = useRef(newRequestId()), speechGeneration = useRef(0), mounted = useRef(true), threadRef = useRef<ScrollView>(null);
   const pending = useQuery({
@@ -105,7 +105,7 @@ export default function CatStudio() {
   const mood: CatMood = speaking ? 'speaking' : thinking ? 'thinking' : petting ? 'happy' : message ? 'listening' : 'idle';
   const stopSpeech = useCallback(() => { speechGeneration.current++; void Speech.stop(); setSpeaking(false); }, []);
   useEffect(() => {
-    generation.current++; setActive(null); setMessage(''); setError(''); setNotice(''); setBusy(false); setRemoving(false); setMovingId(null); setMovePetId(''); stopSpeech(); requestId.current = newRequestId();
+    generation.current++; setActive(null); setMessage(''); setError(''); setNotice(''); setBusy(false); setRemoving(false); setMovingId(null); setMovePetId(''); setEditingQuestionId(null); setQuestionDraft(''); stopSpeech(); requestId.current = newRequestId();
   }, [pet?.id, stopSpeech]);
   useEffect(() => {
     mounted.current = true; const requests = generation, voice = speechGeneration;
@@ -156,7 +156,25 @@ export default function CatStudio() {
   const startMove = (id: string) => {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))); return; }
     if (!otherPets.length) return;
-    setMovingId(id); setMovePetId(otherPets[0].id); setError('');
+    setEditingQuestionId(null); setQuestionDraft(''); setMovingId(id); setMovePetId(otherPets[0].id); setError('');
+  };
+  const startQuestion = (id: string) => {
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))); return; }
+    const turn = turns.find(item => item.id === id);
+    if (!turn) return;
+    setMovingId(null); setMovePetId(''); setEditingQuestionId(id); setQuestionDraft(turn.question); setError('');
+  };
+  const cancelQuestion = () => { setEditingQuestionId(null); setQuestionDraft(''); setError(''); };
+  const saveQuestion = async (id: string) => {
+    const text = questionDraft.trim();
+    if (!text) return;
+    setRemoving(true); setError('');
+    try {
+      const updated = await companion.updateConversationQuestion(id, text);
+      setActive(prev => prev?.id === id ? updated : prev);
+      setEditingQuestionId(null); setQuestionDraft('');
+      await refetchThreads();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setRemoving(false); }
   };
   const cancelMove = () => { setMovingId(null); setMovePetId(''); setError(''); };
   const saveMove = async (id: string) => {
@@ -230,7 +248,7 @@ export default function CatStudio() {
           <View style={styles.pickerHeader}><Text style={styles.headerTitle}>글로 대화하기</Text><Pressable accessibilityRole="button" accessibilityLabel="대화 접기" onPress={closeChat} style={styles.iconButton}><MewIcon name="close" /></Pressable></View>
           <View style={styles.bubbleHeader}><Text style={styles.bubbleLabel}>{companion.demo ? '기기 내 체험 · 실제 AI 답변 아님' : answer ? '기록을 바탕으로 한 AI 답변' : '오늘의 대화'}</Text>{thinking && <ActivityIndicator size="small" color={c.accent} />}{answer && <Pressable accessibilityRole="button" accessibilityLabel={speaking ? '최근 답변 읽기 정지' : '최근 답변 소리로 듣기'} onPress={() => void readAnswer()} style={styles.audioButton}><Ionicons name={speaking ? 'stop-circle-outline' : 'volume-medium-outline'} size={20} color={c.accent} /></Pressable>}</View>
           <ScrollView ref={threadRef} style={{ maxHeight: keyboard ? 140 : Math.min(420, Math.max(180, Math.round(height * 0.46))) }} contentContainerStyle={{ paddingBottom: 8, gap: 16 }} accessibilityLiveRegion="polite" onContentSizeChange={() => { if (!focusThread) threadRef.current?.scrollToEnd({ animated: false }); }}>
-            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} focusId={focusThread} onFocusOffset={y => threadRef.current?.scrollTo({ y, animated: false })} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={(id, turnId) => navigateFromChat(citedObservationHref(id, turnId, pet?.id, 'home'))} onCheckin={(id, turnId) => navigateFromChat(citedCheckinHref(id, turnId, pet?.id, 'home'))} demo={companion.demo} petsKnown={!!pets} otherPets={otherPets} movingId={movingId} movePetId={movePetId} deleting={removing} onDelete={removeTurn} onStartMove={startMove} onMovePet={id => { if (!removing) setMovePetId(id); }} onSaveMove={id => void saveMove(id)} onCancelMove={cancelMove} />
+            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} focusId={focusThread} onFocusOffset={y => threadRef.current?.scrollTo({ y, animated: false })} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={(id, turnId) => navigateFromChat(citedObservationHref(id, turnId, pet?.id, 'home'))} onCheckin={(id, turnId) => navigateFromChat(citedCheckinHref(id, turnId, pet?.id, 'home'))} demo={companion.demo} petsKnown={!!pets} otherPets={otherPets} movingId={movingId} movePetId={movePetId} deleting={removing} editingId={editingQuestionId} questionDraft={questionDraft} onQuestionDraft={setQuestionDraft} onDelete={removeTurn} onStartMove={startMove} onMovePet={id => { if (!removing) setMovePetId(id); }} onSaveMove={id => void saveMove(id)} onCancelMove={cancelMove} onStartQuestion={startQuestion} onSaveQuestion={id => void saveQuestion(id)} onCancelQuestion={cancelQuestion} />
           </ScrollView>
           {(error || appearance.error || pending.error || savedThreads.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{error || appearance.error || errorMessage(pending.error ?? savedThreads.error ?? companion.pets.error)}</Text> : null}
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}
@@ -253,13 +271,21 @@ function turnText(turn: HomeConversationTurn) {
   if (turn.status === 'FAILED') return '답변을 준비하지 못했어요. 다시 질문해 주세요.';
   return turn.answer?.trim() || '아직 답변이 준비되지 않았어요.';
 }
-function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin, demo, petsKnown, otherPets, movingId, movePetId, deleting, onDelete, onStartMove, onMovePet, onSaveMove, onCancelMove }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void; demo: boolean; petsKnown: boolean; otherPets: { id: string; name: string }[]; movingId: string | null; movePetId: string; deleting: boolean; onDelete: (id: string) => void; onStartMove: (id: string) => void; onMovePet: (id: string) => void; onSaveMove: (id: string) => void; onCancelMove: () => void }) {
+function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin, demo, petsKnown, otherPets, movingId, movePetId, deleting, editingId, questionDraft, onQuestionDraft, onDelete, onStartMove, onMovePet, onSaveMove, onCancelMove, onStartQuestion, onSaveQuestion, onCancelQuestion }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void; demo: boolean; petsKnown: boolean; otherPets: { id: string; name: string }[]; movingId: string | null; movePetId: string; deleting: boolean; editingId: string | null; questionDraft: string; onQuestionDraft: (value: string) => void; onDelete: (id: string) => void; onStartMove: (id: string) => void; onMovePet: (id: string) => void; onSaveMove: (id: string) => void; onCancelMove: () => void; onStartQuestion: (id: string) => void; onSaveQuestion: (id: string) => void; onCancelQuestion: () => void }) {
   if (loading) return <Text style={styles.bubbleText}>이전 대화를 확인하고 있어요.</Text>;
   if (failed) return <Text style={styles.bubbleText}>이전 대화를 불러오지 못했어요.</Text>;
   if (!turns.length && !thinking) return <Text style={styles.bubbleText}>{petName ? `${petName}와 어떤 이야기를 나눠 볼까요?` : '반가워요. 나만의 고양이를 만나 보세요.'}</Text>;
   return <View style={{ gap: 16 }}>
     {turns.map(turn => <View key={turn.id} onLayout={event => { if (turn.id === focusId) onFocusOffset(event.nativeEvent.layout.y); }}>
-      <Text style={styles.turnQuestion}>“{turn.question}”</Text>
+      {editingId === turn.id ? <View>
+        <Text style={styles.accountNote}>질문 문장만 고쳐요. 같은 대화의 답변과 인용은 그대로 두어요. 답을 다시 만들지 않아요.</Text>
+        <TextInput accessibilityLabel="질문 문장" value={questionDraft} editable={!deleting} maxLength={1500} multiline onChangeText={onQuestionDraft} style={styles.questionInput} />
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting || !questionDraft.trim() }} disabled={deleting || !questionDraft.trim()} onPress={() => onSaveQuestion(turn.id)} style={styles.citation}><Text style={styles.citationText}>질문 저장</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={onCancelQuestion} style={styles.citation}><Text style={styles.citationText}>질문 수정 취소</Text></Pressable>
+      </View> : <>
+        <Text style={styles.turnQuestion}>“{turn.question}”</Text>
+        {demo ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={() => onStartQuestion(turn.id)} style={styles.citation}><Text style={styles.citationText}>질문 수정</Text></Pressable> : null}
+      </>}
       <Text style={styles.bubbleText}>{turnText(turn)}</Text>
       {(turn.citedObservationIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={id} onPress={() => onObservation(id, turn.id)} style={styles.citation}><Text style={styles.citationText}>참고한 기록 {index + 1} 보기 →</Text></Pressable>)}
       {(turn.citedCheckinIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={`checkin-${id}`} onPress={() => onCheckin(id, turn.id)} style={styles.citation}><Text style={styles.citationText}>{homeCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
@@ -273,6 +299,7 @@ function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocu
       </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={() => onStartMove(turn.id)} style={styles.citation}><Text style={styles.citationText}>다른 아이에게 옮기기</Text></Pressable> : null}
     </View>)}
     {demo && petsKnown && otherPets.length === 0 && turns.length ? <View><Text style={styles.turnQuestion}>어느 아이의 기록인가요</Text><Text style={styles.accountNote}>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Text><Text style={styles.accountNote}>등록된 다른 아이가 없어서 옮길 수 없어요.</Text></View> : null}
+    {!demo && turns.length ? <Text style={styles.accountNote}>이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text> : null}
     {!demo && turns.length ? <Text style={styles.accountNote}>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Text> : null}
     {!demo && turns.length ? <View><Text style={styles.turnQuestion}>어느 아이의 기록인가요</Text><Text style={styles.accountNote}>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Text><Text style={styles.accountNote}>이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text></View> : null}
     {thinking && !turns.some(turn => turn.status === 'QUEUED') ? <Text style={styles.bubbleText}>남겨 준 기록을 살펴보고 있어요.</Text> : null}
@@ -309,7 +336,7 @@ const styles = StyleSheet.create({
   audioButton: { padding: 12, minWidth: 44, minHeight: 44 }, citation: { paddingVertical: 12, minHeight: 44 }, citationText: { fontSize: 13, color: c.accent, fontWeight: '600' }, deleteText: { fontSize: 13, color: c.error, fontWeight: '600' }, accountNote: { fontSize: 12, color: c.muted, lineHeight: 18, marginTop: 4 }, moveRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   error: { fontSize: 12, color: c.error, lineHeight: 18, marginBottom: 6 }, notice: { color: c.accent, fontSize: 12, marginTop: 6 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, paddingLeft: 14, backgroundColor: c.background, borderRadius: 20, borderWidth: 1, borderColor: c.border, marginTop: 10 },
-  input: { flex: 1, minHeight: 40, color: c.ink, fontSize: 14, paddingVertical: 8 }, send: { width: 44, height: 44, borderRadius: 15, backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center' },
+  input: { flex: 1, minHeight: 40, color: c.ink, fontSize: 14, paddingVertical: 8 }, questionInput: { minHeight: 44, color: c.ink, fontSize: 14, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: c.background, borderRadius: 16, borderWidth: 1, borderColor: c.border, marginTop: 8 }, send: { width: 44, height: 44, borderRadius: 15, backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center' },
   shortcuts: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 }, shortcut: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44 }, shortcutText: { fontSize: 11, color: c.muted },
   register: { padding: 12, marginTop: 10, backgroundColor: c.accent, borderRadius: 14, alignItems: 'center' }, registerText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
   modalBackdrop: { flex: 1, backgroundColor: '#17251C55', alignItems: 'center', justifyContent: 'center', padding: 24 }, picker: { width: '100%', maxWidth: 380, backgroundColor: c.surface, borderRadius: 24, padding: 18 },

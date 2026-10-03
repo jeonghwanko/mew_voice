@@ -1,6 +1,6 @@
 import type { CompanionCheckin, CompanionConversation, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, type FeedbackRecord } from './demo';
-import { conversationOpenPet, deleteDemoConversation, findDemoConversation, moveDemoConversation } from './conversationStore';
+import { conversationOpenPet, deleteDemoConversation, findDemoConversation, moveDemoConversation, updateDemoConversationQuestion } from './conversationStore';
 import { diaryConversationRows } from './diaryTimeline';
 import { homeConversationThread } from './homeConversation';
 import { errorMessage } from '../../lib/api';
@@ -119,4 +119,63 @@ it('rejects a conversation move to the same cat, a missing cat, or an account an
   expect(conversationOpenPet({ conversationPetId: 'demo-nabi', requestedPetId: 'demo-momo', knownPetIds: [] })).toBeNull();
   expect(errorMessage(new Error('INVALID_CONVERSATION_PET'))).toBe('옮길 아이를 확인해 주세요.');
   expect(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
+});
+
+it('rewrites one saved question in place and keeps the id, answer, and citations', async () => {
+  const answer = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const kept = turn('thread-keep', 'demo-momo', '나중에 남긴 질문', '2026-09-03T00:00:00Z');
+  const edited = turn('thread-wrong', 'demo-momo', '잘못 저장한 질문', '2026-09-02T00:00:00Z');
+  edited.answer = answer;
+  const other = turn('thread-other', 'demo-nabi', '다른 아이 질문', '2026-09-02T12:00:00Z');
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [observation('obs-1'), observation('obs-2', 'demo-nabi')];
+    data.feedback = [reaction('on-1', 'obs-1')];
+    data.checkins = [checkin()];
+    data.conversations = [kept, edited, other];
+  });
+  const before = await getDemo();
+  const result = await updateDemoConversationQuestion('thread-wrong', '  창가에서 왜 울었는지 다시 적어요  ');
+  const state = await getDemo();
+  const stored = await findDemoConversation('thread-wrong');
+  expect(result).toEqual({ ...edited, question: '창가에서 왜 울었는지 다시 적어요' });
+  expect(stored).toEqual(result);
+  expect(stored?.id).toBe('thread-wrong');
+  expect(stored?.answer).toBe(answer);
+  expect(stored?.citedObservationIds).toEqual(['obs-1']);
+  expect(stored?.citedCheckinIds).toEqual(['care-1']);
+  expect(stored?.petId).toBe('demo-momo');
+  expect(stored?.status).toBe('COMPLETED');
+  expect(stored?.createdAt).toBe(edited.createdAt);
+  expect(state.conversations).toHaveLength(before.conversations.length);
+  expect(state.conversations.map(item => item.id)).toEqual(['thread-keep', 'thread-wrong', 'thread-other']);
+  expect(state.conversations.find(item => item.id === 'thread-keep')).toEqual(kept);
+  expect(state.conversations.find(item => item.id === 'thread-other')).toEqual(other);
+  expect(homeConversationThread(state.conversations, 'demo-momo').map(item => item.id)).toEqual(['thread-wrong', 'thread-keep']);
+  expect(homeConversationThread(state.conversations, 'demo-momo').find(item => item.id === 'thread-wrong')?.question).toBe('창가에서 왜 울었는지 다시 적어요');
+  expect(homeConversationThread(state.conversations, 'demo-momo').find(item => item.id === 'thread-wrong')?.answer).toBe(answer);
+  expect(diaryConversationRows(state.conversations, 'demo-momo').find(item => item.id === 'conversation-thread-wrong')).toMatchObject({
+    label: '창가에서 왜 울었는지 다시 적어요',
+    note: answer,
+    target: '/(tabs)/conversation?conversationId=thread-wrong',
+  });
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  expect(state.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2']);
+  expect(state.feedback.map(item => item.id)).toEqual(['on-1']);
+  expect(state.checkins.map(item => item.id)).toEqual(['care-1']);
+  await expect(updateDemoConversationQuestion('thread-wrong', '   ')).rejects.toThrow('INVALID_CONVERSATION_QUESTION');
+  await expect(updateDemoConversationQuestion('thread-wrong', '가'.repeat(1501))).rejects.toThrow('INVALID_CONVERSATION_QUESTION');
+  await expect(updateDemoConversationQuestion('missing', '다시 적은 질문')).rejects.toThrow('NOT_FOUND');
+  const afterReject = await getDemo();
+  expect(afterReject.conversations.find(item => item.id === 'thread-wrong')?.question).toBe('창가에서 왜 울었는지 다시 적어요');
+  expect(afterReject.conversations.find(item => item.id === 'thread-wrong')?.answer).toBe(answer);
+  expect(afterReject.conversations).toHaveLength(3);
+  expect(afterReject.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(updateDemoConversationQuestion('thread-wrong', '동의 없는 수정')).rejects.toThrow('CONSENT_REQUIRED');
+  const frozen = await findDemoConversation('thread-wrong');
+  expect(frozen?.question).toBe('창가에서 왜 울었는지 다시 적어요');
+  expect(frozen?.answer).toBe(answer);
+  expect(errorMessage(new Error('INVALID_CONVERSATION_QUESTION'))).toBe('질문 문장을 확인해 주세요.');
+  expect(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });

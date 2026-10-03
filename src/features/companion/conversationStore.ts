@@ -41,6 +41,28 @@ export function conversationOpenPet(input: {
   return null;
 }
 
+const QUESTION_LIMIT = 1500;
+
+/**
+ * Correct the question sentence on one saved turn.
+ * The conversation id, answer, and citations stay on the same row.
+ * This does not create a conversation or a cat, and it does not rewrite the stored answer.
+ */
+export async function updateDemoConversationQuestion(id: string, question: string): Promise<CompanionConversation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    if (typeof question !== 'string') throw new Error('INVALID_CONVERSATION_QUESTION');
+    const text = question.trim();
+    if (!text || text.length > QUESTION_LIMIT) throw new Error('INVALID_CONVERSATION_QUESTION');
+    const index = data.conversations.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('NOT_FOUND');
+    const current = data.conversations[index];
+    const updated: CompanionConversation = { ...current, question: text };
+    data.conversations[index] = updated;
+    return updated;
+  });
+}
+
 /**
  * Move one saved question-and-answer onto another cat the caregiver already has.
  * The conversation id, question, answer, and citations inside that answer stay on the same row.
