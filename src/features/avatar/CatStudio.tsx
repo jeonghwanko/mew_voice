@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -11,6 +11,8 @@ import type { CompanionConversation } from '@findthem/shared';
 import { useSession } from '../../core/session';
 import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
+import { demoConversationsFor, getDemo } from '../companion/demo';
+import { homeConversationThread, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
 import { AppearancePanel } from './AppearancePanel';
 import { CatStage } from './CatStage';
 import { useAppearance } from './useAppearance';
@@ -39,7 +41,7 @@ export default function CatStudio() {
   const [picker, setPicker] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
   const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
   const [active, setActive] = useState<CompanionConversation | null>(null);
-  const generation = useRef(0), requestId = useRef(newRequestId()), speechGeneration = useRef(0), mounted = useRef(true);
+  const generation = useRef(0), requestId = useRef(newRequestId()), speechGeneration = useRef(0), mounted = useRef(true), threadRef = useRef<ScrollView>(null);
   const pending = useQuery({
     queryKey: [...companion.key, 'studio-conversation', active?.id],
     enabled: !!active?.id && active.status === 'QUEUED' && !companion.demo,
@@ -47,8 +49,17 @@ export default function CatStudio() {
     refetchInterval: query => query.state.data?.status === 'QUEUED' ? 2500 : false,
   });
   const current = pending.data ?? active;
+  const savedThreads = useQuery({
+    queryKey: [...companion.key, 'conversations', pet?.id],
+    enabled: !!pet,
+    queryFn: async (): Promise<{ items: CompanionConversation[]; nextCursor: string | null }> => {
+      if (companion.demo) return { items: demoConversationsFor(await getDemo(), pet!.id), nextCursor: null };
+      return api.get<{ items: CompanionConversation[]; nextCursor: string | null }>(`/pet-companion/pets/${pet!.id}/conversations`);
+    },
+  });
+  const turns = useMemo(() => homeConversationThread(savedThreads.data?.items ?? [], pet?.id, current), [savedThreads.data, pet?.id, current]);
   const thinking = busy || current?.status === 'QUEUED';
-  const answer = current?.status === 'COMPLETED' ? current.answer : null;
+  const answer = thinking ? null : latestHomeAnswer(turns);
   const mood: CatMood = speaking ? 'speaking' : thinking ? 'thinking' : petting ? 'happy' : message ? 'listening' : 'idle';
   const stopSpeech = useCallback(() => { speechGeneration.current++; void Speech.stop(); setSpeaking(false); }, []);
   useEffect(() => {
@@ -59,7 +70,9 @@ export default function CatStudio() {
     const sub = AppState.addEventListener('change', state => { if (state !== 'active') stopSpeech(); });
     return () => { mounted.current = false; requests.current++; voice.current++; sub.remove(); void Speech.stop(); };
   }, [stopSpeech]);
-  useFocusEffect(useCallback(() => () => stopSpeech(), [stopSpeech]));
+  const petId = pet?.id;
+  const refetchThreads = savedThreads.refetch;
+  useFocusEffect(useCallback(() => { if (petId) void refetchThreads(); return () => stopSpeech(); }, [petId, refetchThreads, stopSpeech]));
   useEffect(() => { if (!petting) return; const timer = setTimeout(() => setPetting(false), 1600); return () => clearTimeout(timer); }, [petting]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 3500); return () => clearTimeout(timer); }, [notice]);
   const send = async () => {
@@ -70,6 +83,7 @@ export default function CatStudio() {
       const result = await companion.ask(pet.id, message.trim(), requestId.current);
       if (token !== generation.current || !mounted.current) return;
       setActive(result); setMessage(''); requestId.current = newRequestId();
+      void refetchThreads();
     } catch (cause) { if (token === generation.current && mounted.current) setError(errorMessage(cause)); }
     finally { if (token === generation.current && mounted.current) setBusy(false); }
   };
@@ -96,7 +110,7 @@ export default function CatStudio() {
   const selectPet = async (id: string) => { try { await companion.selectPet(id); setPicker(false); } catch { setError('아이를 바꾸지 못했어요. 다시 선택해 주세요.'); } };
   const navigateFromChat = (path: Href) => { setChatOpen(false); stopSpeech(); router.push(path); };
   const panel = <AppearancePanel compact={!wide} value={appearance.value} onChange={appearance.setValue} onSave={() => { void appearance.save().then(saved => { if (saved) { setNotice('이 모습을 저장했어요'); if (!wide) setEditing(false); } }); }} saving={appearance.saving} ready={appearance.ready} onClose={() => setEditing(false)} side={side} onSide={() => setSide(side === 'left' ? 'right' : 'left')} />;
-  const bubble = pending.isError ? '연결을 확인해 주세요. 답변이 준비되었는지 다시 확인할 수 있어요.' : thinking ? '남겨 준 기록을 살펴보고 있어요.' : current?.status === 'FAILED' ? '답변을 준비하지 못했어요. 다시 질문해 주세요.' : answer || (pet ? `${pet.name}와 어떤 이야기를 나눠 볼까요?` : '반가워요. 나만의 고양이를 만나 보세요.');
+  const chatEntry = thinking ? '답변을 준비하고 있어요…' : turns.length ? '이전 대화 이어 읽기' : pet ? `${pet.name}에게 궁금한 이야기` : '우리 아이와 대화하기';
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
     {focused && <StatusBar style="dark" />}
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -125,7 +139,7 @@ export default function CatStudio() {
               {!keyboard && <LatestObservation />}
               {!keyboard && <TodayCare />}
               <Pressable accessibilityRole="button" accessibilityLabel="고양이 쓰다듬기" onPress={() => setPetting(true)} style={styles.greeting}><View style={styles.dot} /><Text style={styles.sceneNote}>{petting ? '가상 고양이가 인사해요' : '터치해서 인사해요'}</Text></Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="글로 대화하기" onPress={() => setChatOpen(true)} style={styles.chatEntry}><MewIcon name="talk" size={21} /><Text style={styles.chatEntryText}>{thinking ? '답변을 준비하고 있어요…' : answer ? '도착한 답변 읽기' : pet ? `${pet.name}에게 궁금한 이야기` : '우리 아이와 대화하기'}</Text><MewIcon name="arrow" size={16} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="글로 대화하기" onPress={() => setChatOpen(true)} style={styles.chatEntry}><MewIcon name="talk" size={21} /><Text style={styles.chatEntryText}>{chatEntry}</Text><MewIcon name="arrow" size={16} /></Pressable>
               {(appearance.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{appearance.error || errorMessage(companion.pets.error)}</Text> : null}
               {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
             </View>}
@@ -138,10 +152,13 @@ export default function CatStudio() {
         <Pressable accessibilityRole="button" accessibilityLabel="대화 바깥 영역 닫기" onPress={() => { setChatOpen(false); stopSpeech(); }} style={StyleSheet.absoluteFill} />
         <SafeAreaView edges={['bottom', 'left', 'right']} style={[styles.conversation, { maxHeight: height * 0.85 }]} accessibilityViewIsModal>
           <View style={styles.pickerHeader}><Text style={styles.headerTitle}>글로 대화하기</Text><Pressable accessibilityRole="button" accessibilityLabel="대화 접기" onPress={() => { setChatOpen(false); stopSpeech(); }} style={styles.iconButton}><MewIcon name="close" /></Pressable></View>
-          <View style={styles.bubbleHeader}><Text style={styles.bubbleLabel}>{companion.demo ? '기기 내 체험 · 실제 AI 답변 아님' : answer ? '기록을 바탕으로 한 AI 답변' : '오늘의 대화'}</Text>{thinking && <ActivityIndicator size="small" color={c.accent} />}{answer && <Pressable accessibilityRole="button" accessibilityLabel={speaking ? '답변 읽기 정지' : '답변 소리로 듣기'} onPress={() => void readAnswer()} style={styles.audioButton}><Ionicons name={speaking ? 'stop-circle-outline' : 'volume-medium-outline'} size={20} color={c.accent} /></Pressable>}</View>
-          <ScrollView style={{ maxHeight: height < 740 ? 76 : 116 }} contentContainerStyle={{ paddingBottom: 4 }} accessibilityLiveRegion="polite"><Text style={styles.bubbleText}>{bubble}</Text>{current?.citedObservationIds.map((id, i) => <Pressable accessibilityRole="link" key={id} onPress={() => navigateFromChat(`/observations/${id}`)} style={styles.citation}><Text style={styles.citationText}>참고한 기록 {i + 1} 보기 →</Text></Pressable>)}{(current?.citedCheckinIds ?? []).map((id, i) => <Pressable accessibilityRole="link" key={`checkin-${id}`} onPress={() => navigateFromChat(`/checkin?id=${id}`)} style={styles.citation}><Text style={styles.citationText}>참고한 오늘 돌봄 {i + 1} 보기 →</Text></Pressable>)}</ScrollView>
-          {(error || appearance.error || pending.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{error || appearance.error || errorMessage(pending.error ?? companion.pets.error)}</Text> : null}
+          <View style={styles.bubbleHeader}><Text style={styles.bubbleLabel}>{companion.demo ? '기기 내 체험 · 실제 AI 답변 아님' : answer ? '기록을 바탕으로 한 AI 답변' : '오늘의 대화'}</Text>{thinking && <ActivityIndicator size="small" color={c.accent} />}{answer && <Pressable accessibilityRole="button" accessibilityLabel={speaking ? '최근 답변 읽기 정지' : '최근 답변 소리로 듣기'} onPress={() => void readAnswer()} style={styles.audioButton}><Ionicons name={speaking ? 'stop-circle-outline' : 'volume-medium-outline'} size={20} color={c.accent} /></Pressable>}</View>
+          <ScrollView ref={threadRef} style={{ maxHeight: keyboard ? 140 : Math.min(420, Math.max(180, Math.round(height * 0.46))) }} contentContainerStyle={{ paddingBottom: 8, gap: 16 }} accessibilityLiveRegion="polite" onContentSizeChange={() => threadRef.current?.scrollToEnd({ animated: false })}>
+            <ChatThread turns={turns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} onObservation={id => navigateFromChat(`/observations/${id}`)} onCheckin={id => navigateFromChat(`/checkin?id=${id}`)} />
+          </ScrollView>
+          {(error || appearance.error || pending.error || savedThreads.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{error || appearance.error || errorMessage(pending.error ?? savedThreads.error ?? companion.pets.error)}</Text> : null}
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}
+          {savedThreads.isError && <Pressable accessibilityRole="button" onPress={() => void savedThreads.refetch()} style={styles.citation}><Text style={styles.citationText}>이전 대화 다시 불러오기</Text></Pressable>}
           {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
           {!pet ? <Pressable accessibilityRole="button" onPress={() => navigateFromChat('/pets/new')} style={styles.register}><Text style={styles.registerText}>우리 아이 등록하기</Text></Pressable> : <View style={styles.inputRow}><TextInput accessibilityLabel="고양이에게 물어볼 내용" placeholder="오늘 궁금했던 이야기를 적어 주세요" placeholderTextColor={c.muted} style={styles.input} value={message} editable={!thinking} maxLength={1500} onChangeText={value => { setMessage(value); requestId.current = newRequestId(); }} onSubmitEditing={() => void send()} returnKeyType="send" /><Pressable accessibilityRole="button" accessibilityLabel="질문 보내기" disabled={!message.trim() || thinking} onPress={() => void send()} style={[styles.send, (!message.trim() || thinking) && { opacity: 0.45 }]}><Ionicons name="arrow-up" size={22} color="#FFFDF8" /></Pressable></View>}
           <View style={[styles.shortcuts, keyboard && { display: 'none' }]}><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/meow')} style={styles.shortcut}><Ionicons name="mic-outline" size={16} color={c.accent} /><Text style={styles.shortcutText}>야옹 놀이</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/capture')} style={styles.shortcut}><Ionicons name="camera-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>사진·울음</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/checkin')} style={styles.shortcut}><Ionicons name="add-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>기록</Text></Pressable></View>
@@ -153,6 +170,26 @@ export default function CatStudio() {
     <HomeMenu page={menuPage} onPage={setMenuPage} onClose={() => setMenuPage(null)} />
     <Modal transparent visible={picker} onRequestClose={() => setPicker(false)} animationType="fade"><View style={styles.modalBackdrop}><View style={styles.picker}><View style={styles.pickerHeader}><Text style={styles.headerTitle}>함께할 아이</Text><Pressable accessibilityRole="button" accessibilityLabel="고양이 선택 닫기" onPress={() => setPicker(false)} style={styles.iconButton}><Ionicons name="close" size={22} color={c.ink} /></Pressable></View><ScrollView style={{ maxHeight: 300 }}>{companion.pets.data?.map(item => <Pressable accessibilityRole="button" accessibilityState={{ selected: pet?.id === item.id }} key={item.id} style={styles.petRow} onPress={() => void selectPet(item.id)}><Text style={styles.petName}>{item.name}</Text>{pet?.id === item.id && <Ionicons name="checkmark" color={c.accent} size={20} />}</Pressable>)}</ScrollView><Pressable accessibilityRole="button" style={styles.petRow} onPress={() => { setPicker(false); router.push('/pets/new'); }}><Text style={styles.citationText}>새로운 아이 등록</Text></Pressable></View></View></Modal>
   </SafeAreaView>;
+}
+
+function turnText(turn: HomeConversationTurn) {
+  if (turn.status === 'QUEUED') return '남겨 준 기록을 살펴보고 있어요.';
+  if (turn.status === 'FAILED') return '답변을 준비하지 못했어요. 다시 질문해 주세요.';
+  return turn.answer?.trim() || '아직 답변이 준비되지 않았어요.';
+}
+function ChatThread({ turns, thinking, loading, failed, petName, onObservation, onCheckin }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; onObservation: (id: string) => void; onCheckin: (id: string) => void }) {
+  if (loading) return <Text style={styles.bubbleText}>이전 대화를 확인하고 있어요.</Text>;
+  if (failed) return <Text style={styles.bubbleText}>이전 대화를 불러오지 못했어요.</Text>;
+  if (!turns.length && !thinking) return <Text style={styles.bubbleText}>{petName ? `${petName}와 어떤 이야기를 나눠 볼까요?` : '반가워요. 나만의 고양이를 만나 보세요.'}</Text>;
+  return <View style={{ gap: 16 }}>
+    {turns.map(turn => <View key={turn.id}>
+      <Text style={styles.turnQuestion}>“{turn.question}”</Text>
+      <Text style={styles.bubbleText}>{turnText(turn)}</Text>
+      {(turn.citedObservationIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={id} onPress={() => onObservation(id)} style={styles.citation}><Text style={styles.citationText}>참고한 기록 {index + 1} 보기 →</Text></Pressable>)}
+      {(turn.citedCheckinIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={`checkin-${id}`} onPress={() => onCheckin(id)} style={styles.citation}><Text style={styles.citationText}>참고한 오늘 돌봄 {index + 1} 보기 →</Text></Pressable>)}
+    </View>)}
+    {thinking && !turns.some(turn => turn.status === 'QUEUED') ? <Text style={styles.bubbleText}>남겨 준 기록을 살펴보고 있어요.</Text> : null}
+  </View>;
 }
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: c.stage }, fill: { flex: 1 }, page: { flex: 1, width: '100%', maxWidth: 1220, alignSelf: 'center' },
@@ -181,7 +218,7 @@ const styles = StyleSheet.create({
   desktopPanel: { width: 250, paddingBottom: 12 }, mobilePanel: { position: 'absolute', top: 8, bottom: 8, zIndex: 4, width: 182 },
   chatBackdrop: { flex: 1, backgroundColor: '#17251C55', justifyContent: 'flex-end', alignItems: 'center' },
   conversation: { width: '100%', maxWidth: 640, paddingHorizontal: 22, paddingTop: 12, paddingBottom: 12, backgroundColor: c.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
-  bubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 }, bubbleLabel: { fontSize: 11, fontWeight: '600', color: c.accent, flex: 1 }, bubbleText: { fontSize: 16, lineHeight: 24, color: c.ink },
+  bubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 }, bubbleLabel: { fontSize: 11, fontWeight: '600', color: c.accent, flex: 1 }, bubbleText: { fontSize: 16, lineHeight: 24, color: c.ink }, turnQuestion: { color: c.accent, fontSize: 14, lineHeight: 22, marginBottom: 4 },
   audioButton: { padding: 12, minWidth: 44, minHeight: 44 }, citation: { paddingVertical: 12, minHeight: 44 }, citationText: { fontSize: 13, color: c.accent, fontWeight: '600' },
   error: { fontSize: 12, color: c.error, lineHeight: 18, marginBottom: 6 }, notice: { color: c.accent, fontSize: 12, marginTop: 6 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, paddingLeft: 14, backgroundColor: c.background, borderRadius: 20, borderWidth: 1, borderColor: c.border, marginTop: 10 },
