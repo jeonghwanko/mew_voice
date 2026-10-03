@@ -46,16 +46,31 @@ export function citedPriorObservationHref(observationId: string, input: Observat
 }
 
 /**
+ * Observation opened from one pet’s diary.
+ * Without that pet, the plain observation route stays so leaving still reaches the record list.
+ * The stored thread is not rewritten.
+ */
+export function diaryObservationHref(observationId: string, petId?: string) {
+  const id = observationId.trim();
+  if (!id) return '/history';
+  const pet = petId?.trim();
+  if (!pet) return `/observations/${encodeURIComponent(id)}`;
+  return `/observations/${encodeURIComponent(id)}?returnTo=diary&petId=${encodeURIComponent(pet)}`;
+}
+
+/**
  * After a new reaction is saved, return to the question that opened this observation.
  * The conversation tab and the home chat both keep the stored thread id and pet.
- * History, and a home open without that id, stay on the observation. The thread is not rewritten.
+ * A diary open returns to that same pet’s diary. History, and a home open without that id, stay on the observation.
+ * The thread is not rewritten.
  */
-export function observationExitHref(input: ObservationExitInput): `/(tabs)/conversation?${string}` | ReturnType<typeof homeQuestionHref> | null {
+export function observationExitHref(input: ObservationExitInput): `/(tabs)/conversation?${string}` | `/(tabs)/history?petId=${string}` | ReturnType<typeof homeQuestionHref> | null {
   const returnTo = firstParam(input.returnTo);
-  if (returnTo !== 'conversation' && returnTo !== 'home') return null;
   const conversationId = firstParam(input.conversationId);
-  if (!conversationId) return null;
   const petId = firstParam(input.petId);
+  if (returnTo === 'diary' && petId) return `/(tabs)/history?petId=${encodeURIComponent(petId)}`;
+  if (returnTo !== 'conversation' && returnTo !== 'home') return null;
+  if (!conversationId) return null;
   if (returnTo === 'home') return homeQuestionHref(conversationId, petId);
   const query = [`conversationId=${encodeURIComponent(conversationId)}`];
   if (petId) query.push(`petId=${encodeURIComponent(petId)}`);
@@ -65,7 +80,8 @@ export function observationExitHref(input: ObservationExitInput): `/(tabs)/conve
 /**
  * Leaving without a new reaction.
  * A citation from the home chat or the conversation tab returns to that question.
- * History, and an open without that id, stays on the record list. The thread is not rewritten.
+ * A diary open returns to that same pet’s diary. History, and an open without that id, stays on the record list.
+ * The thread is not rewritten.
  */
 export function observationLeaveHref(input: ObservationExitInput): NonNullable<ReturnType<typeof observationExitHref>> | '/history' {
   return observationExitHref(input) ?? '/history';

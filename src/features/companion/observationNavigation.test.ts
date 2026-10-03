@@ -1,4 +1,4 @@
-import { citedObservationHref, citedPriorObservationHref, observationExitHref, observationLeaveHref } from './observationNavigation';
+import { citedObservationHref, citedPriorObservationHref, diaryObservationHref, observationExitHref, observationLeaveHref } from './observationNavigation';
 
 it('returns to the saved conversation after a cited observation, and stays otherwise', () => {
   expect(citedObservationHref('obs-1', 'thread-1', 'demo-momo')).toBe('/observations/obs-1?returnTo=conversation&conversationId=thread-1&petId=demo-momo');
@@ -60,4 +60,23 @@ it('keeps the opening question when a caregiver reaction opens an earlier observ
   expect(citedPriorObservationHref('prior-1', { returnTo: 'conversation' })).toBe('/observations/prior-1');
   expect(citedPriorObservationHref('prior-1', { returnTo: 'conversation', conversationId: '   ' })).toBe('/observations/prior-1');
   expect(citedPriorObservationHref('   ', { returnTo: 'home', conversationId: 'thread-1', petId: 'demo-momo' })).toBe('/history');
+});
+
+it('returns to the same pet’s diary after an observation opened from the diary', () => {
+  expect(diaryObservationHref('obs-1', 'demo-momo')).toBe('/observations/obs-1?returnTo=diary&petId=demo-momo');
+  expect(observationExitHref({ returnTo: 'diary', petId: 'demo-momo' })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(observationExitHref({ returnTo: ['diary'], petId: ['demo-momo'] })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(observationExitHref({ returnTo: 'diary', petId: 'pet 1', conversationId: 'thread-1' })).toBe('/(tabs)/history?petId=pet%201');
+  expect(observationExitHref({ returnTo: 'diary' })).toBeNull();
+  expect(observationExitHref({ returnTo: 'diary', petId: '   ' })).toBeNull();
+  expect(observationExitHref({ returnTo: 'history', conversationId: 'thread-1', petId: 'demo-momo' })).toBeNull();
+  expect(diaryObservationHref('obs/1', 'pet 1')).toBe('/observations/obs%2F1?returnTo=diary&petId=pet%201');
+  expect(diaryObservationHref('   ', 'demo-momo')).toBe('/history');
+  expect(diaryObservationHref('obs-1', '   ')).toBe('/observations/obs-1');
+  expect(observationLeaveHref({ returnTo: 'diary', petId: 'demo-momo' })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(observationLeaveHref({ returnTo: 'diary', petId: 'pet 1' })).toBe('/(tabs)/history?petId=pet%201');
+  expect(observationLeaveHref({ returnTo: 'diary' })).toBe('/history');
+  expect(observationLeaveHref({ returnTo: 'diary', petId: '   ' })).toBe('/history');
+  expect(observationLeaveHref({ returnTo: 'home', conversationId: 'thread-1', petId: 'demo-momo' })).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(observationLeaveHref({ returnTo: 'conversation', conversationId: 'thread-1', petId: 'demo-momo' })).toBe('/(tabs)/conversation?conversationId=thread-1&petId=demo-momo');
 });

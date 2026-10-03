@@ -12,6 +12,7 @@ import { useCheckins, checkinLabels, useCitedCheckinMoments } from '../../src/fe
 import { citedCaresForAnswer, citedReactionsForAnswer, presentConversationAnswer } from '../../src/features/companion/daily';
 import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
 import { diaryCheckinHref, diaryPetTarget } from '../../src/features/companion/checkinNavigation';
+import { diaryObservationHref } from '../../src/features/companion/observationNavigation';
 import { appendDiaryPage, diaryConversationRows, diaryIntro, mergeDiaryRecords } from '../../src/features/companion/diaryTimeline';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { loadCheckinListPage, loadObservationListPage, loadWeeklyRecords } from '../../src/features/companion/weeklyPages';
@@ -82,7 +83,7 @@ export default function History() {
   const observationLabel = (kind: string) => kind === 'AUDIO' ? '울음 관찰' : kind === 'VIDEO' ? '짧은 영상 기록' : '사진 관찰';
   const rows = [
     ...care.map(item => ({ id: `checkin-${item.id}`, at: item.occurredAt, label: checkinLabels[item.kind], note: item.note, icon: 'diary' as MewIconName, target: diaryCheckinHref(item.id, petId) })),
-    ...observations.map(item => ({ id: `observation-${item.id}`, at: item.createdAt, label: item.question || observationLabel(item.kind), note: item.inference?.observation[0] ?? null, icon: 'cat' as MewIconName, target: `/observations/${item.id}` })),
+    ...observations.map(item => ({ id: `observation-${item.id}`, at: item.createdAt, label: item.question || observationLabel(item.kind), note: item.inference?.observation[0] ?? null, icon: 'cat' as MewIconName, target: diaryObservationHref(item.id, petId) })),
     ...savedThreads.map(item => ({ ...item, icon: 'talk' as MewIconName })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const hasMore = !!observationCursor || !!checkinCursor;
