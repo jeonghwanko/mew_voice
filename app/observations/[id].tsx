@@ -72,6 +72,14 @@ export default function ObservationScreen() {
     if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; }
     Alert.alert('반응을 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
   };
+  const removeThis = () => {
+    if (!data) return;
+    if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_ACCOUNT_READONLY'))); return; }
+    const execute = () => { setBusy(true); setError(''); setConflict(false); void companion.removeObservation(id).then(() => { router.replace(observationLeaveHref(params)); }).catch(cause => setError(errorMessage(cause))).finally(() => setBusy(false)); };
+    const copy = '이 관찰 기록을 삭제할까요? 삭제한 기록은 되돌릴 수 없어요.';
+    if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; }
+    Alert.alert('관찰을 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
+  };
   return <Screen title={data?.question || '오늘의 관찰'} subtitle={data ? `${displayDate(data.createdAt)} · ${companion.pets.data?.find(p => p.id === data.petId)?.name ?? '우리 아이'}` : 'OBSERVATION'}>
     {observation.isLoading && <Loading />}<ErrorNote message={observation.error ? errorMessage(observation.error) : null} />
     {data && <>{data.kind === 'AUDIO' ? (data.localAudioUri ? <><AudioPreview uri={data.localAudioUri} />{Platform.OS === 'web' && <Body muted>{data.localMediaVolatile ? '브라우저 체험에서는 녹음을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.' : '브라우저 체험에서는 녹음을 서버로 보내지 않아요.'}</Body>}</> : <Card><Body muted>이 울음 파일은 이 화면에서 다시 들을 수 없어요. 체험 모드에서 기기에 남긴 녹음만 재생할 수 있어요.</Body></Card>) : data.kind === 'VIDEO' && data.localVideoUri ? <><VideoPreview uri={data.localVideoUri} />{Platform.OS === 'web' && data.localMediaVolatile && <Body muted>브라우저 체험에서는 영상을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body>}</> : data.kind === 'VIDEO' ? <Card><Body muted>이 영상 파일은 이 화면에서 재생할 수 없어요. 체험 모드에서 남긴 영상만 기기에서 미리 볼 수 있어요.</Body></Card> : data.localPhotoUri || !companion.demo ? <PrivatePhoto id={id} localUri={data.localPhotoUri} /> : <Card><Body muted>이 사진 파일은 이 화면에서 다시 볼 수 없어요. 체험 모드에서 기기에 남긴 사진만 미리 볼 수 있어요.</Body></Card>}{data.kind === 'AUDIO' && <Body muted>이 녹음은 AI로 분석하지 않았어요. 소리의 뜻을 번역하지 않아요.</Body>}{data.kind === 'VIDEO' && <Body muted>이 영상은 AI로 분석하지 않았어요. 길이와 상황만 기록이에요.</Body>}<View style={{ marginBottom: 14 }}><Badge>{companion.demo ? '체험 기록 · 실제 AI 분석 아님' : data.status === 'ABSTAINED' ? '판단 어려움' : '추정 해석 · 관찰을 바탕으로'}</Badge></View>{companion.demo && <Body>이 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요.</Body>}
@@ -98,6 +106,7 @@ export default function ObservationScreen() {
       <Button title={editing ? '수정 저장하기' : '반응을 기억해 두기'} busy={busy} disabled={busy || !action.trim() || !reaction.trim()} onPress={() => void save()} />
       {editing && <Button title="수정 취소" secondary disabled={busy} onPress={cancelEdit} />}
       <Button title="이 아이의 기록으로 대화하기" secondary onPress={() => router.push({ pathname: '/conversation', params: { petId: data.petId } })} />
+      {companion.demo ? <Button title="이 관찰 삭제" danger disabled={busy} onPress={removeThis} /> : <Body muted>이 계정에 남긴 관찰은 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Body>}
     </>}
     <Pressable onPress={() => router.replace(observationLeaveHref(params))} style={{ padding: 20, alignItems: 'center' }}><Body muted>기록 목록으로</Body></Pressable>
   </Screen>;

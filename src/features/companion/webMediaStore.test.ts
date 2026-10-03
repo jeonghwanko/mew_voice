@@ -36,5 +36,8 @@ it('saves photo, audio, and video bytes and reads the same bytes after a reload'
   expect(await readDemoMedia(reloaded, 'photo-1')).toBeNull();
   expect(await readDemoMedia(reloaded, 'audio-1')).toBeNull();
   expect((await readDemoMedia(reloaded, 'video-1'))?.bytes).toEqual(video);
+  await reloaded.deleteObservation('video-1');
+  expect(await readDemoMedia(reloaded, 'video-1')).toBeNull();
+  expect(await readDemoMedia(reloaded, 'photo-1')).toBeNull();
   await expect(saveDemoMedia(reloaded, record('empty', 'AUDIO', [], 'audio/webm'))).rejects.toThrow('MEDIA_UNREADABLE');
 });

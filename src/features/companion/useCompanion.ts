@@ -8,7 +8,8 @@ import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { deleteDemoFeedback, updateDemoFeedback, type UpdateDemoFeedbackInput } from './reactionStore';
-import { durableDemoMediaUri, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
+import { deleteDemoObservation } from './observationStore';
+import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
 import { observationListPath, pageObservations } from './observationPages';
 
 export type Observation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string; localMediaVolatile?: boolean };
@@ -92,6 +93,18 @@ export function useCompanion() {
     await deleteDemoFeedback(observationId, feedbackId, version);
     await invalidate();
   };
+  // Account mode has no DELETE /observations/:id. Do not pretend a server delete happened.
+  const removeObservation = async (id: string) => {
+    if (!demo) throw new Error('OBSERVATION_ACCOUNT_READONLY');
+    if (Platform.OS !== 'web') {
+      const current = (await getDemo()).observations.find(item => item.id === id);
+      const files = [current?.localPhotoUri, current?.localAudioUri, current?.localVideoUri];
+      for (const uri of files) if (uri?.startsWith(FileSystem.documentDirectory + 'companion-photos/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-audio/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-videos/')) await FileSystem.deleteAsync(uri, { idempotent: true });
+    }
+    await deleteDemoObservation(id);
+    await forgetObservationDemoMedia(id);
+    await invalidate();
+  };
   const removePet = async (id: string) => {
     const removedIds = demo ? (await getDemo()).observations.filter(o => o.petId === id).map(o => o.id) : [];
     if (demo && Platform.OS !== 'web') {
@@ -112,7 +125,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, removeObservation, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {

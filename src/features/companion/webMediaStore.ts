@@ -14,6 +14,7 @@ export type StoredDemoMedia = {
 export type DemoMediaStore = {
   put(record: StoredDemoMedia): Promise<void>;
   get(observationId: string): Promise<StoredDemoMedia | null>;
+  deleteObservation(observationId: string): Promise<void>;
   deletePet(petId: string): Promise<void>;
 };
 
@@ -52,6 +53,7 @@ export function createMemoryMediaStore(backing = new Map<string, StoredDemoMedia
       const found = backing.get(observationId);
       return found ? copyRecord(found) : null;
     },
+    async deleteObservation(observationId) { backing.delete(observationId); },
     async deletePet(petId) {
       for (const [id, record] of backing) if (record.petId === petId) backing.delete(id);
     },
@@ -164,6 +166,12 @@ export function createIndexedDbMediaStore(): DemoMediaStore {
       await transactionDone(transaction);
       if (!row?.bytes || !row.observationId) return null;
       return { observationId: row.observationId, petId: row.petId, kind: row.kind, mimeType: row.mimeType, bytes: asBytes(row.bytes) };
+    },
+    async deleteObservation(observationId) {
+      const db = await openMediaDb();
+      const transaction = db.transaction(DB_STORE, 'readwrite');
+      transaction.objectStore(DB_STORE).delete(observationId);
+      await transactionDone(transaction);
     },
     async deletePet(petId) {
       const db = await openMediaDb();
@@ -282,6 +290,12 @@ export async function durableDemoMediaUri(input: { uri: string; kind: DemoMediaK
   } catch {
     return { uri: input.uri, mimeType: input.mimeType, byteSize: undefined as number | undefined };
   }
+}
+
+export async function forgetObservationDemoMedia(observationId: string) {
+  if (Platform.OS !== 'web' || !observationId) return;
+  revokeDemoMediaUrls([observationId]);
+  try { await browserDemoMediaStore().deleteObservation(observationId); } catch { /* the observation row is already gone */ }
 }
 
 export async function forgetPetDemoMedia(petId: string, observationIds: readonly string[]) {
