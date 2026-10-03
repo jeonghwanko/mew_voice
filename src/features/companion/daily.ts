@@ -157,18 +157,52 @@ export function citedReactionFromFeedback(feedback: readonly ReactionFeedback[] 
   return { status: 'gone' };
 }
 
-/**
- * First cited reaction sentence only, from the observation as it is saved now.
- * A deleted observation or reaction drops that quote. Later sentences and other turns stay.
- */
-export function presentCitedReactionAnswer(text: string | null | undefined, reaction: CitedReactionRecord | null | undefined) {
-  if (!text || !reaction) return text ?? null;
-  const match = CITED_REACTION_QUOTE.exec(text);
-  if (!match) return text;
-  const replacement = reaction.status === 'gone'
+function citedReactionSentence(reaction: CitedReactionRecord) {
+  return reaction.status === 'gone'
     ? citedReactionGoneText
     : `“${reaction.action}” 이후 “${reaction.reaction}”라고 남겼어요`;
-  return text.slice(0, match.index) + replacement + text.slice(match.index + match[0].length);
+}
+
+/**
+ * Cited reactions in the same order as this answer’s observation ids.
+ * An id that is not loaded yet stays absent so a later sentence does not move up.
+ * No loaded record means the stored answer is left alone.
+ */
+export function citedReactionsForAnswer(
+  ids: readonly string[] | null | undefined,
+  moments: ReadonlyMap<string, CitedReactionRecord>,
+): (CitedReactionRecord | undefined)[] | undefined {
+  if (!ids?.length) return undefined;
+  const records = ids.map(id => moments.get(id));
+  return records.some(item => item != null) ? records : undefined;
+}
+
+/**
+ * Every cited reaction sentence, in observation order, from the record as it is saved now.
+ * One record still rewrites only the first sentence. A deleted observation or reaction drops that quote.
+ * A sentence with no loaded record, and anything that is not a cited reaction sentence, stays.
+ */
+export function presentCitedReactionAnswer(
+  text: string | null | undefined,
+  reaction: CitedReactionRecord | readonly (CitedReactionRecord | undefined)[] | null | undefined,
+) {
+  if (!text || !reaction) return text ?? null;
+  const reactions = Array.isArray(reaction) ? reaction : [reaction];
+  if (!reactions.some(item => item != null)) return text;
+  const pattern = new RegExp(CITED_REACTION_QUOTE.source, 'g');
+  const matches = [...text.matchAll(pattern)];
+  if (!matches.length) return text;
+  let cursor = 0;
+  let shown = '';
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const start = match.index ?? 0;
+    shown += text.slice(cursor, start);
+    const record = reactions[index];
+    shown += record ? citedReactionSentence(record) : match[0];
+    cursor = start + match[0].length;
+  }
+  return shown + text.slice(cursor);
 }
 
 
@@ -193,11 +227,11 @@ export function resolveCitedReactionMap(input: {
   return map;
 }
 
-/** Every cited care sentence, then the first reaction sentence. Other sentences stay. */
+/** Every cited care sentence, then every cited reaction sentence. Other sentences stay. */
 export function presentConversationAnswer(
   text: string | null | undefined,
   care: CitedCareRecord | readonly (CitedCareRecord | undefined)[] | undefined,
-  reaction: CitedReactionRecord | null | undefined,
+  reaction: CitedReactionRecord | readonly (CitedReactionRecord | undefined)[] | null | undefined,
   now = new Date(),
 ) {
   return presentCitedReactionAnswer(presentCitedCareAnswer(text, care, now), reaction);

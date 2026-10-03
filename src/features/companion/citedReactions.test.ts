@@ -1,4 +1,4 @@
-import { citedReactionFromFeedback, citedReactionGoneText, presentCitedReactionAnswer, presentConversationAnswer, resolveCitedReactionMap } from './daily';
+import { citedReactionFromFeedback, citedReactionGoneText, citedReactionsForAnswer, presentCitedReactionAnswer, presentConversationAnswer, resolveCitedReactionMap } from './daily';
 
 const saved = '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.';
 
@@ -21,6 +21,60 @@ it('rewrites only the first reaction sentence', () => {
   expect(edited).not.toContain('따라왔어요');
   const care = '질문과 맞는 저장 기록을 찾았어요. 오늘 돌봄에 “식사를 챙겼어요”라고 남겼어요. 한 번의 기록으로 이유를 확정할 수는 없어요.';
   expect(presentCitedReactionAnswer(care, { status: 'gone' })).toBe(care);
+});
+
+it('refreshes every cited reaction sentence and leaves sentences that are not those citations', () => {
+  const saved = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. “지켜봤어요” 이후 “그대로였어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.';
+  const edited = presentCitedReactionAnswer(saved, [
+    { status: 'saved', action: '창문을 열었어요', reaction: '다가왔어요' },
+    { status: 'saved', action: '밥을 줬어요', reaction: '먹었어요' },
+  ]);
+  expect(edited).toBe('질문과 맞는 저장 기록을 찾았어요. “창문을 열었어요” 이후 “다가왔어요”라고 남겼어요. “밥을 줬어요” 이후 “먹었어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.');
+  const goneLater = presentCitedReactionAnswer(saved, [
+    { status: 'saved', action: '창문을 열었어요', reaction: '다가왔어요' },
+    { status: 'gone' },
+  ]);
+  expect(goneLater).toContain('“창문을 열었어요” 이후 “다가왔어요”라고 남겼어요');
+  expect(goneLater).toContain(citedReactionGoneText);
+  expect(goneLater).not.toContain('지켜봤어요');
+  expect(goneLater).not.toContain('그대로였어요');
+  expect(goneLater).not.toContain('따라왔어요');
+  const unreadLater = presentCitedReactionAnswer(saved, [
+    { status: 'saved', action: '창문을 열었어요', reaction: '다가왔어요' },
+    undefined,
+  ]);
+  expect(unreadLater).toContain('“창문을 열었어요” 이후 “다가왔어요”라고 남겼어요');
+  expect(unreadLater).toContain('“지켜봤어요” 이후 “그대로였어요”라고 남겼어요');
+  expect(unreadLater).not.toContain('따라왔어요');
+  const extra = `${saved} “문을 닫았어요” 이후 “숨었어요”라고 남겼어요.`;
+  const firstOnly = presentCitedReactionAnswer(extra, { status: 'gone' });
+  expect(firstOnly).toContain(citedReactionGoneText);
+  expect(firstOnly).toContain('지켜봤어요');
+  expect(firstOnly).toContain('문을 닫았어요');
+  expect(firstOnly).not.toContain('따라왔어요');
+  const moments = new Map([
+    ['obs-1', { status: 'saved' as const, action: '창문을 열었어요', reaction: '다가왔어요' }],
+    ['obs-2', { status: 'gone' as const }],
+  ]);
+  expect(citedReactionsForAnswer(['obs-1', 'missing', 'obs-2'], moments)).toEqual([
+    moments.get('obs-1'),
+    undefined,
+    moments.get('obs-2'),
+  ]);
+  expect(citedReactionsForAnswer(['missing'], moments)).toBeUndefined();
+  expect(citedReactionsForAnswer(undefined, moments)).toBeUndefined();
+  const three = `${saved.slice(0, saved.indexOf('한 번의 반응'))}“문을 닫았어요” 이후 “숨었어요”라고 남겼어요. ${saved.slice(saved.indexOf('한 번의 반응'))}`;
+  const together = presentConversationAnswer(
+    three,
+    undefined,
+    citedReactionsForAnswer(['obs-1', 'missing', 'obs-2'], moments),
+  );
+  expect(together).toContain('“창문을 열었어요” 이후 “다가왔어요”라고 남겼어요');
+  expect(together).toContain('“지켜봤어요” 이후 “그대로였어요”라고 남겼어요');
+  expect(together).toContain(citedReactionGoneText);
+  expect(together).not.toContain('따라왔어요');
+  expect(together).not.toContain('문을 닫았어요');
+  expect(together).not.toContain('숨었어요');
 });
 
 it('keeps a later reaction on the same observation and ignores a blank one', () => {

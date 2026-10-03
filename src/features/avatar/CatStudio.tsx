@@ -15,7 +15,7 @@ import { loadSavedConversations } from '../companion/conversationPages';
 import { homeConversationThread, homeQuestionTarget, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
 import { citedCheckinHref } from '../companion/checkinNavigation';
 import { citedObservationHref } from '../companion/observationNavigation';
-import { citedCaresForAnswer, homeCitedCheckinLink, presentConversationAnswer } from '../companion/daily';
+import { citedCaresForAnswer, citedReactionsForAnswer, homeCitedCheckinLink, presentConversationAnswer } from '../companion/daily';
 import { useCitedCheckinMoments } from '../companion/useCheckins';
 import { useCitedReactionMoments } from '../companion/citedReactions';
 import { AppearancePanel } from './AppearancePanel';
@@ -85,7 +85,7 @@ export default function CatStudio() {
   const reactionMoments = useCitedReactionMoments(citedObservationIds);
   const visibleTurns = useMemo(() => turns.map(turn => ({
     ...turn,
-    answer: presentConversationAnswer(turn.answer, citedCaresForAnswer(turn.citedCheckinIds, careMoments), reactionMoments.get(turn.citedObservationIds?.[0] ?? '')),
+    answer: presentConversationAnswer(turn.answer, citedCaresForAnswer(turn.citedCheckinIds, careMoments), citedReactionsForAnswer(turn.citedObservationIds, reactionMoments)),
   })), [turns, careMoments, reactionMoments]);
   const thinking = busy || current?.status === 'QUEUED';
   const answer = thinking ? null : latestHomeAnswer(visibleTurns);
