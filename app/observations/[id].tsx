@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import { View, Image, Platform, Pressable } from 'react-native';
+import { View, Image, Platform, Pressable, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Screen, Body, Heading, Button, Badge, Card, Field, Chip, ErrorNote, Loading, s } from '../../src/ui/components';
 import { useCompanion, useObservation } from '../../src/features/companion/useCompanion';
-import { API_BASE, authHeaders, errorMessage } from '../../src/lib/api';
+import { API_BASE, ApiError, authHeaders, errorMessage } from '../../src/lib/api';
 import { displayDate } from '../../src/features/companion/RecordCard';
 import { VideoPreview } from '../../src/features/companion/VideoPreview';
 import { AudioPreview } from '../../src/features/companion/AudioPreview';
-import { observationCitedReactions } from '../../src/features/companion/daily';
+import { latestSavedFeedback, observationCitedReactions } from '../../src/features/companion/daily';
 import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
 import { citedPriorObservationHref, observationExitHref, observationLeaveHref } from '../../src/features/companion/observationNavigation';
+import { feedbackVersion } from '../../src/features/companion/reactionStore';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> }>();
@@ -20,13 +21,57 @@ function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   }, [id, localUri]);
   return source ? <Image accessibilityLabel="이 관찰에 첨부한 사진" source={source} style={{ width: '100%', height: 230, borderRadius: 22, marginBottom: 18 }} /> : null;
 }
+const actions = ['놀아줬어요', '먹었어요', '쉬게 뒀어요', '지켜봤어요'];
+const reactions = ['편안해 보였어요', '계속했어요', '피했어요', '잘 모르겠어요'];
+function conflicted(cause: unknown) { return (cause instanceof ApiError && cause.status === 409) || (cause instanceof Error && cause.message === 'EDIT_CONFLICT'); }
+
 export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
-  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const data = observation.data; const inference = data?.inference;
   const reactionMoments = useCitedReactionMoments(inference?.citedObservationIds ?? []);
   const citedReactions = observationCitedReactions(inference?.citedObservationIds, reactionMoments);
-  const save = async () => { setBusy(true); setError(''); try { await companion.feedback(id, { action: action.trim(), reaction: reaction.trim(), note: note.trim(), happenedAt: new Date().toISOString() }); setAction(''); setReaction(''); setNote(''); const next = observationExitHref(params); if (next) router.replace(next); else await observation.refetch(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } };
+  const latest = latestSavedFeedback(data?.feedback);
+  const finish = async () => {
+    setEditing(null); setAction(''); setReaction(''); setNote(''); setConflict(false);
+    const next = observationExitHref(params);
+    if (next) router.replace(next); else await observation.refetch();
+  };
+  const save = async () => {
+    setBusy(true); setError(''); setConflict(false);
+    try {
+      if (editing) await companion.updateFeedback(id, editing.id, { version: editing.version, action: action.trim(), reaction: reaction.trim(), note: note.trim() || null });
+      else await companion.feedback(id, { action: action.trim(), reaction: reaction.trim(), note: note.trim(), happenedAt: new Date().toISOString() });
+      await finish();
+    } catch (cause) {
+      if (conflicted(cause)) { setConflict(true); setError(editing ? '다른 곳에서 이 반응이 수정되었어요. 작성 중인 내용은 그대로 남아 있어요.' : errorMessage(cause)); }
+      else setError(errorMessage(cause));
+    } finally { setBusy(false); }
+  };
+  const startEdit = () => {
+    if (!latest?.id) return;
+    if (!companion.demo) { setError(errorMessage(new Error('REACTION_ACCOUNT_READONLY'))); return; }
+    setEditing({ id: latest.id, version: feedbackVersion(latest) });
+    setAction(latest.action ?? ''); setReaction(latest.reaction ?? ''); setNote(latest.note ?? '');
+    setError(''); setConflict(false);
+  };
+  const cancelEdit = () => { setEditing(null); setAction(''); setReaction(''); setNote(''); setError(''); setConflict(false); };
+  const reload = () => {
+    setConflict(false);
+    void observation.refetch().then(result => {
+      const next = latestSavedFeedback(result.data?.feedback);
+      setEditing(current => current && next?.id === current.id ? { id: next.id, version: feedbackVersion(next) } : current);
+    });
+  };
+  const removeLatest = () => {
+    if (!latest?.id) return;
+    if (!companion.demo) { setError(errorMessage(new Error('REACTION_ACCOUNT_READONLY'))); return; }
+    const feedbackId = latest.id; const version = feedbackVersion(latest);
+    const execute = () => { setBusy(true); setError(''); setConflict(false); void companion.removeFeedback(id, feedbackId, version).then(finish).catch(cause => { if (conflicted(cause)) { setConflict(true); setError('다른 곳에서 이 반응이 수정되었어요. 최신 내용을 다시 불러온 뒤 삭제할 수 있어요.'); } else setError(errorMessage(cause)); }).finally(() => setBusy(false)); };
+    const copy = '이 반응 기록을 삭제할까요? 삭제한 기록은 되돌릴 수 없어요.';
+    if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; }
+    Alert.alert('반응을 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
+  };
   return <Screen title={data?.question || '오늘의 관찰'} subtitle={data ? `${displayDate(data.createdAt)} · ${companion.pets.data?.find(p => p.id === data.petId)?.name ?? '우리 아이'}` : 'OBSERVATION'}>
     {observation.isLoading && <Loading />}<ErrorNote message={observation.error ? errorMessage(observation.error) : null} />
     {data && <>{data.kind === 'AUDIO' ? (data.localAudioUri ? <><AudioPreview uri={data.localAudioUri} />{Platform.OS === 'web' && <Body muted>{data.localMediaVolatile ? '브라우저 체험에서는 녹음을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.' : '브라우저 체험에서는 녹음을 서버로 보내지 않아요.'}</Body>}</> : <Card><Body muted>이 울음 파일은 이 화면에서 다시 들을 수 없어요. 체험 모드에서 기기에 남긴 녹음만 재생할 수 있어요.</Body></Card>) : data.kind === 'VIDEO' && data.localVideoUri ? <><VideoPreview uri={data.localVideoUri} />{Platform.OS === 'web' && data.localMediaVolatile && <Body muted>브라우저 체험에서는 영상을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body>}</> : data.kind === 'VIDEO' ? <Card><Body muted>이 영상 파일은 이 화면에서 재생할 수 없어요. 체험 모드에서 남긴 영상만 기기에서 미리 볼 수 있어요.</Body></Card> : data.localPhotoUri || !companion.demo ? <PrivatePhoto id={id} localUri={data.localPhotoUri} /> : <Card><Body muted>이 사진 파일은 이 화면에서 다시 볼 수 없어요. 체험 모드에서 기기에 남긴 사진만 미리 볼 수 있어요.</Body></Card>}{data.kind === 'AUDIO' && <Body muted>이 녹음은 AI로 분석하지 않았어요. 소리의 뜻을 번역하지 않아요.</Body>}{data.kind === 'VIDEO' && <Body muted>이 영상은 AI로 분석하지 않았어요. 길이와 상황만 기록이에요.</Body>}<View style={{ marginBottom: 14 }}><Badge>{companion.demo ? '체험 기록 · 실제 AI 분석 아님' : data.status === 'ABSTAINED' ? '판단 어려움' : '추정 해석 · 관찰을 바탕으로'}</Badge></View>{companion.demo && <Body>이 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요.</Body>}
@@ -41,14 +86,17 @@ export default function ObservationScreen() {
         {inference.suggestedAction && <Card accent><Heading>이렇게 반응해 볼까요?</Heading><Body>{inference.suggestedAction}</Body></Card>}
         {!!citedReactions.length && <><Heading>함께 참고한 이전 기록</Heading>{citedReactions.map(item => <View key={item.id}>{item.line ? <Body>{item.line}</Body> : null}{item.open ? <Button title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(item.id, params))} /> : null}</View>)}</>}
       </>}
-      <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.</Body>
-      {data.feedback?.map(f => <Card key={f.id}><Badge>보호자 기록</Badge><Body>{f.action} → {f.reaction}</Body>{f.note && <Body muted>{f.note}</Body>}</Card>)}
-      <View style={[s.row, { marginTop: 16 }]}>{['놀아줬어요', '먹었어요', '쉬게 뒀어요', '지켜봤어요'].map(v => <Chip key={v} label={v} selected={action === v} onPress={() => setAction(v)} />)}<Chip label="기타" selected={!['놀아줬어요', '먹었어요', '쉬게 뒀어요', '지켜봤어요'].includes(action) && !!action} onPress={() => setAction('')} /></View>
-      <Field label="해 본 행동" value={action} onChangeText={setAction} maxLength={500} placeholder="직접 쓴 행동 · 선택" />
-      <Heading>그 뒤 반응은 어땠나요?</Heading><View style={s.row}>{['편안해 보였어요', '계속했어요', '피했어요', '잘 모르겠어요'].map(v => <Chip key={v} label={v} selected={reaction === v} onPress={() => setReaction(v)} />)}<Chip label="기타" selected={!['편안해 보였어요', '계속했어요', '피했어요', '잘 모르겠어요'].includes(reaction) && !!reaction} onPress={() => setReaction('')} /></View>
-      <Field label="이후 관찰한 반응" value={reaction} onChangeText={setReaction} maxLength={500} placeholder="직접 쓴 반응 · 선택" multiline />
-      <Field label="추가 메모 · 선택" value={note} onChangeText={setNote} maxLength={2000} />
-      <ErrorNote message={error} /><Button title="반응을 기억해 두기" busy={busy} disabled={!action.trim() || !reaction.trim()} onPress={() => void save()} />
+      <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>{editing ? '저장한 최근 반응을 고치고 있어요. 새 반응을 추가하지 않아요.' : '실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.'}</Body>
+      {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && item.id === latest?.id && <><Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={startEdit} /><Button title="이 반응 삭제" danger disabled={busy} onPress={removeLatest} /></>}</Card>)}
+      <View style={[s.row, { marginTop: 16 }]}>{actions.map(v => <Chip key={v} label={v} selected={action === v} onPress={() => { if (!busy) setAction(v); }} />)}<Chip label="기타" selected={!actions.includes(action) && !!action} onPress={() => { if (!busy) setAction(''); }} /></View>
+      <Field label="해 본 행동" value={action} editable={!busy} onChangeText={setAction} maxLength={500} placeholder="직접 쓴 행동 · 선택" />
+      <Heading>그 뒤 반응은 어땠나요?</Heading><View style={s.row}>{reactions.map(v => <Chip key={v} label={v} selected={reaction === v} onPress={() => { if (!busy) setReaction(v); }} />)}<Chip label="기타" selected={!reactions.includes(reaction) && !!reaction} onPress={() => { if (!busy) setReaction(''); }} /></View>
+      <Field label="이후 관찰한 반응" value={reaction} editable={!busy} onChangeText={setReaction} maxLength={500} placeholder="직접 쓴 반응 · 선택" multiline />
+      <Field label="추가 메모 · 선택" value={note} editable={!busy} onChangeText={setNote} maxLength={2000} />
+      <ErrorNote message={error} />
+      {conflict && <Button title="최신 기록 다시 불러오기" secondary disabled={busy} onPress={reload} />}
+      <Button title={editing ? '수정 저장하기' : '반응을 기억해 두기'} busy={busy} disabled={busy || !action.trim() || !reaction.trim()} onPress={() => void save()} />
+      {editing && <Button title="수정 취소" secondary disabled={busy} onPress={cancelEdit} />}
       <Button title="이 아이의 기록으로 대화하기" secondary onPress={() => router.push({ pathname: '/conversation', params: { petId: data.petId } })} />
     </>}
     <Pressable onPress={() => router.replace(observationLeaveHref(params))} style={{ padding: 20, alignItems: 'center' }}><Body muted>기록 목록으로</Body></Pressable>

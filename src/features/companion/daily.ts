@@ -134,12 +134,8 @@ const CITED_REACTION_QUOTE = /“[^“”]*” 이후 “[^“”]*”라고 남
 
 type ReactionFeedback = { id?: string; action?: string | null; reaction?: string | null; createdAt?: string | null };
 
-/**
- * Newest saved reaction on one observation.
- * Same order as the home card: createdAt, then id. A missing list is unknown, not deleted.
- * An empty list, or only blank actions and reactions, means the saved reaction is gone.
- */
-export function citedReactionFromFeedback(feedback: readonly ReactionFeedback[] | null | undefined): CitedReactionRecord | null {
+/** Newest saved action and reaction. createdAt, then id. Blank pairs are skipped. A missing list is unknown. */
+export function latestSavedFeedback<T extends ReactionFeedback>(feedback: readonly T[] | null | undefined): T | null {
   if (feedback == null) return null;
   const ranked = feedback.map((item, index) => ({ item, index }));
   ranked.sort((a, b) => {
@@ -150,11 +146,21 @@ export function citedReactionFromFeedback(feedback: readonly ReactionFeedback[] 
     return b.index - a.index;
   });
   for (const { item } of ranked) {
-    const action = item.action?.trim() ?? '';
-    const reaction = item.reaction?.trim() ?? '';
-    if (action && reaction) return { status: 'saved', action, reaction };
+    if ((item.action?.trim() ?? '') && (item.reaction?.trim() ?? '')) return item;
   }
-  return { status: 'gone' };
+  return null;
+}
+
+/**
+ * Newest saved reaction on one observation.
+ * Same order as the home card: createdAt, then id. A missing list is unknown, not deleted.
+ * An empty list, or only blank actions and reactions, means the saved reaction is gone.
+ */
+export function citedReactionFromFeedback(feedback: readonly ReactionFeedback[] | null | undefined): CitedReactionRecord | null {
+  if (feedback == null) return null;
+  const latest = latestSavedFeedback(feedback);
+  if (!latest) return { status: 'gone' };
+  return { status: 'saved', action: (latest.action ?? '').trim(), reaction: (latest.reaction ?? '').trim() };
 }
 
 function citedReactionSentence(reaction: CitedReactionRecord) {

@@ -2,7 +2,7 @@ import type { CompanionCheckin, CompanionConversation, CompanionPet, CompanionOb
 import { readDemo, writeDemo } from '../../core/storage';
 import { checkinLabels, citedCareName, citedCheckinQuote } from './daily';
 
-export type FeedbackRecord = CompanionFeedback;
+export type FeedbackRecord = CompanionFeedback & { version?: number };
 export type ChatReply = { id: string; text: string; citedObservationIds: string[]; citedCheckinIds: string[] };
 export type DemoObservation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string };
 export type DemoState = { version: 1; checkins: CompanionCheckin[]; checkinRequests: Record<string, string>; pets: CompanionPet[]; observations: DemoObservation[]; feedback: FeedbackRecord[]; conversations: CompanionConversation[]; consent: CompanionConsent };

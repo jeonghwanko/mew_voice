@@ -7,6 +7,7 @@ import type { CompanionDeletion, CompanionListResponse, CompanionPet, CompanionO
 import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
+import { deleteDemoFeedback, updateDemoFeedback, type UpdateDemoFeedbackInput } from './reactionStore';
 import { durableDemoMediaUri, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
 import { observationListPath, pageObservations } from './observationPages';
 
@@ -75,8 +76,20 @@ export function useCompanion() {
   };
   const submitPhoto = (draft: PhotoDraft) => submitMedia({ ...draft, kind: 'PHOTO' });
   const feedback = async (id: string, input: CompanionFeedbackInput) => {
-    if (demo) await changeDemo(data => { data.feedback.push({ ...input, note: input.note ?? null, happenedAt: input.happenedAt ?? new Date().toISOString(), createdAt: new Date().toISOString(), id: createId(), observationId: id }); });
+    if (demo) await changeDemo(data => { data.feedback.push({ ...input, note: input.note ?? null, happenedAt: input.happenedAt ?? new Date().toISOString(), createdAt: new Date().toISOString(), id: createId(), observationId: id, version: 1 }); });
     else await api.post(`${base}/observations/${id}/feedback`, input);
+    await invalidate();
+  };
+  // Account mode can add a reaction. There is no edit or delete route, so those stay on this device.
+  const updateFeedback = async (observationId: string, feedbackId: string, input: UpdateDemoFeedbackInput) => {
+    if (!demo) throw new Error('REACTION_ACCOUNT_READONLY');
+    const record = await updateDemoFeedback(observationId, feedbackId, input);
+    await invalidate();
+    return record;
+  };
+  const removeFeedback = async (observationId: string, feedbackId: string, version: number) => {
+    if (!demo) throw new Error('REACTION_ACCOUNT_READONLY');
+    await deleteDemoFeedback(observationId, feedbackId, version);
     await invalidate();
   };
   const removePet = async (id: string) => {
@@ -99,7 +112,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {
