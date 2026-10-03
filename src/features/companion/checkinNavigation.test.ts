@@ -1,4 +1,4 @@
-import { checkinContinueHref, checkinExitHref, checkinUnavailableHref, citedCheckinHref } from './checkinNavigation';
+import { checkinContinueHref, checkinExitHref, checkinUnavailableHref, citedCheckinHref, diaryCheckinHref, diaryPetTarget } from './checkinNavigation';
 
 it('returns to the saved conversation after a cited check-in, and home otherwise', () => {
   expect(citedCheckinHref('care-1', 'thread-1', 'demo-momo')).toBe('/checkin?id=care-1&returnTo=conversation&conversationId=thread-1&petId=demo-momo');
@@ -57,4 +57,27 @@ it('returns to the opening question when a cited check-in is missing or belongs 
   expect(checkinUnavailableHref({ returnTo: 'home', conversationId: '   ', petId: 'demo-momo' })).toBe('/history');
   expect(checkinUnavailableHref({ returnTo: 'conversation' })).toBe('/history');
   expect(checkinUnavailableHref({ returnTo: 'conversation', conversationId: '   ' })).toBe('/history');
+});
+
+it('returns to the same pet’s diary after a check-in opened from the diary', () => {
+  expect(diaryCheckinHref('care-1', 'demo-momo')).toBe('/checkin?id=care-1&returnTo=diary&petId=demo-momo');
+  expect(checkinExitHref({ returnTo: 'diary', petId: 'demo-momo' })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(checkinExitHref({ returnTo: ['diary'], petId: ['demo-momo'] })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(checkinExitHref({ returnTo: 'diary', petId: 'pet 1', conversationId: 'thread-1' })).toBe('/(tabs)/history?petId=pet%201');
+  expect(checkinExitHref({ returnTo: 'diary' })).toBe('/');
+  expect(checkinExitHref({ returnTo: 'diary', petId: '   ' })).toBe('/');
+  expect(checkinExitHref({ returnTo: 'history', conversationId: 'thread-1', petId: 'demo-momo' })).toBe('/');
+  expect(diaryCheckinHref('care/1', 'pet 1')).toBe('/checkin?id=care%2F1&returnTo=diary&petId=pet%201');
+  expect(diaryCheckinHref('   ', 'demo-momo')).toBe('/checkin');
+  expect(diaryCheckinHref('care-1', '   ')).toBe('/checkin?id=care-1');
+  expect(checkinContinueHref({ returnTo: 'diary', petId: 'demo-momo' })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(checkinContinueHref({ returnTo: 'diary' })).toBeNull();
+  expect(checkinContinueHref({ returnTo: 'diary', petId: '   ' })).toBeNull();
+  expect(checkinUnavailableHref({ returnTo: 'diary', petId: 'demo-momo' })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(checkinUnavailableHref({ returnTo: 'diary', petId: 'pet 1' })).toBe('/(tabs)/history?petId=pet%201');
+  expect(checkinUnavailableHref({ returnTo: 'diary' })).toBe('/history');
+  expect(diaryPetTarget({ petId: 'demo-momo' })).toBe('demo-momo');
+  expect(diaryPetTarget({ petId: ['pet 1'] })).toBe('pet 1');
+  expect(diaryPetTarget({ petId: '   ' })).toBeNull();
+  expect(diaryPetTarget({})).toBeNull();
 });

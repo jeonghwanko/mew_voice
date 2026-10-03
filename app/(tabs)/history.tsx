@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, type Href } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import type { CompanionCheckin, CompanionObservation } from '@findthem/shared';
 import { MewIcon, type MewIconName } from '../../src/ui/MewIcon';
@@ -11,6 +11,7 @@ import { studio as c } from '../../src/features/avatar/appearance';
 import { useCheckins, checkinLabels, useCitedCheckinMoments } from '../../src/features/companion/useCheckins';
 import { citedCaresForAnswer, citedReactionsForAnswer, presentConversationAnswer } from '../../src/features/companion/daily';
 import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
+import { diaryCheckinHref, diaryPetTarget } from '../../src/features/companion/checkinNavigation';
 import { appendDiaryPage, diaryConversationRows, diaryIntro, mergeDiaryRecords } from '../../src/features/companion/diaryTimeline';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { loadCheckinListPage, loadObservationListPage, loadWeeklyRecords } from '../../src/features/companion/weeklyPages';
@@ -29,8 +30,20 @@ type OlderDiary = {
 
 export default function History() {
   const focused = useIsFocused();
+  const { petId: requestedPetId } = useLocalSearchParams<{ petId?: string | string[] }>();
+  const requestedDiaryPet = diaryPetTarget({ petId: requestedPetId });
   const checkins = useCheckins();
   const petId = checkins.activePet?.id;
+  const pets = checkins.pets.data;
+  const selectPet = checkins.selectPet;
+  useEffect(() => {
+    if (!focused || !requestedDiaryPet || !pets) return;
+    if (pets.some(pet => pet.id === requestedDiaryPet) && petId !== requestedDiaryPet) {
+      void selectPet(requestedDiaryPet);
+      return;
+    }
+    router.setParams({ petId: '' });
+  }, [focused, requestedDiaryPet, pets, petId, selectPet]);
   const [older, setOlder] = useState<OlderDiary | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<unknown>(null);
@@ -68,7 +81,7 @@ export default function History() {
   ]);
   const observationLabel = (kind: string) => kind === 'AUDIO' ? '울음 관찰' : kind === 'VIDEO' ? '짧은 영상 기록' : '사진 관찰';
   const rows = [
-    ...care.map(item => ({ id: `checkin-${item.id}`, at: item.occurredAt, label: checkinLabels[item.kind], note: item.note, icon: 'diary' as MewIconName, target: `/checkin?id=${item.id}` })),
+    ...care.map(item => ({ id: `checkin-${item.id}`, at: item.occurredAt, label: checkinLabels[item.kind], note: item.note, icon: 'diary' as MewIconName, target: diaryCheckinHref(item.id, petId) })),
     ...observations.map(item => ({ id: `observation-${item.id}`, at: item.createdAt, label: item.question || observationLabel(item.kind), note: item.inference?.observation[0] ?? null, icon: 'cat' as MewIconName, target: `/observations/${item.id}` })),
     ...savedThreads.map(item => ({ ...item, icon: 'talk' as MewIconName })),
   ].sort((a, b) => b.at.localeCompare(a.at));

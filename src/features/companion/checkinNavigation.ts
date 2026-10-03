@@ -1,6 +1,6 @@
 import { homeQuestionHref } from './homeConversation';
 
-/** Where a check-in was opened from. Only a real conversation id may leave the home path. */
+/** Where a check-in was opened from. A conversation id may return to that question. A diary pet may return to that diary. */
 export type CheckinExitInput = {
   returnTo?: string | string[];
   conversationId?: string | string[];
@@ -30,14 +30,34 @@ export function citedCheckinHref(checkinId: string, conversationId: string, petI
 }
 
 /**
+ * Check-in opened from one pet’s diary.
+ * Without that pet, the plain edit route stays so history can still go home.
+ * The stored thread is not rewritten.
+ */
+export function diaryCheckinHref(checkinId: string, petId?: string) {
+  const id = checkinId.trim();
+  if (!id) return '/checkin';
+  const pet = petId?.trim();
+  if (!pet) return `/checkin?id=${encodeURIComponent(id)}`;
+  return `/checkin?id=${encodeURIComponent(id)}&returnTo=diary&petId=${encodeURIComponent(pet)}`;
+}
+
+/** Pet whose diary should reopen. A blank id is not a pet. */
+export function diaryPetTarget(input: { petId?: string | string[] }) {
+  return firstParam(input.petId) ?? null;
+}
+
+/**
  * After save or delete, return to the question that opened this check-in.
  * The conversation tab and the home chat both keep the stored thread id and pet.
- * History still goes home. A home open without that id also goes home, and the thread is not rewritten.
+ * A diary open returns to that same pet’s diary. History still goes home.
+ * A home open without that id also goes home, and the thread is not rewritten.
  */
-export function checkinExitHref(input: CheckinExitInput): '/' | `/(tabs)/conversation?${string}` | ReturnType<typeof homeQuestionHref> {
+export function checkinExitHref(input: CheckinExitInput): '/' | `/(tabs)/conversation?${string}` | `/(tabs)/history?petId=${string}` | ReturnType<typeof homeQuestionHref> {
   const returnTo = firstParam(input.returnTo);
   const conversationId = firstParam(input.conversationId);
   const petId = firstParam(input.petId);
+  if (returnTo === 'diary' && petId) return `/(tabs)/history?petId=${encodeURIComponent(petId)}`;
   if (returnTo === 'home' && conversationId) return homeQuestionHref(conversationId, petId);
   if (returnTo !== 'conversation' || !conversationId) return '/';
   const query = [`conversationId=${encodeURIComponent(conversationId)}`];
@@ -48,7 +68,8 @@ export function checkinExitHref(input: CheckinExitInput): '/' | `/(tabs)/convers
 /**
  * Leaving without saving or deleting a check-in.
  * A citation from the home chat or the conversation tab returns to that question.
- * History keeps the previous screen. The stored thread is not rewritten.
+ * A diary open returns to that same pet’s diary. History keeps the previous screen.
+ * The stored thread is not rewritten.
  */
 export function checkinContinueHref(input: CheckinExitInput): Exclude<ReturnType<typeof checkinExitHref>, '/'> | null {
   const next = checkinExitHref(input);
@@ -58,7 +79,8 @@ export function checkinContinueHref(input: CheckinExitInput): Exclude<ReturnType
 /**
  * A cited check-in that cannot be loaded, or belongs to another pet.
  * The home chat or the conversation tab returns to that stored question.
- * Without that question, the record list stays. The thread is not rewritten.
+ * A diary open returns to that same pet’s diary. Without that question, the record list stays.
+ * The thread is not rewritten.
  */
 export function checkinUnavailableHref(input: CheckinExitInput): NonNullable<ReturnType<typeof checkinContinueHref>> | '/history' {
   return checkinContinueHref(input) ?? '/history';
