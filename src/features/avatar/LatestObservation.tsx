@@ -1,8 +1,9 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { MewIcon } from '../../ui/MewIcon';
 import { errorMessage } from '../../lib/api';
 import { HOME_OBSERVATION_EMPTY, homeObservationSummary } from '../companion/homeObservation';
+import { VideoPreview } from '../companion/VideoPreview';
 import { useCompanion } from '../companion/useCompanion';
 import { studio as c } from './appearance';
 
@@ -26,12 +27,15 @@ export function LatestObservation() {
     if (failed) { void companion.observations.refetch(); return; }
     if (summary) router.push(`/observations/${summary.id}`);
   };
+  const current = summary ? loaded.find(item => item.id === summary.id) : undefined;
+  const photoUri = current?.kind === 'PHOTO' ? current.localPhotoUri : undefined;
+  const videoUri = current?.kind === 'VIDEO' ? current.localVideoUri : undefined;
   const label = summary
     ? `최근 관찰, ${summary.kindLabel}, ${summary.timeLabel}. ${summary.honesty ?? ''} ${summary.reaction ? `저장한 반응 ${summary.reaction}` : '저장한 반응 없음'}`.replace(/\s+/g, ' ').trim()
     : `최근 관찰, ${line}`;
   return <View style={styles.card}>
     <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!summary && !failed} onPress={open} style={styles.main}>
-      <MewIcon name="cat" size={22} color={c.accent} />
+      {photoUri ? <Image source={{ uri: photoUri }} style={styles.thumb} accessibilityLabel="최근 관찰 사진" /> : videoUri ? <View pointerEvents="none"><VideoPreview uri={videoUri} compact /></View> : <MewIcon name="cat" size={22} color={c.accent} />}
       <View style={styles.copy}>
         <Text style={styles.kicker}>최근 관찰</Text>
         <Text style={styles.body} numberOfLines={2}>{line}</Text>
@@ -53,6 +57,7 @@ const styles = StyleSheet.create({
   body: { color: c.ink, fontSize: 13, lineHeight: 18, marginTop: 2 },
   note: { color: c.muted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   hint: { color: c.muted, fontSize: 11, marginTop: 2 },
+  thumb: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#F3E6D4' },
   open: { minHeight: 44, paddingHorizontal: 14, borderRadius: 14, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
   openText: { color: '#FFFDF8', fontSize: 13, fontWeight: '700' },
 });

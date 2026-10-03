@@ -7,9 +7,10 @@ import type { CompanionDeletion, CompanionListResponse, CompanionPet, CompanionO
 import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
+import { durableDemoMediaUri, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
 import { OBSERVATION_PAGE_SIZE, pageObservations } from './observationPages';
 
-export type Observation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string };
+export type Observation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string; localMediaVolatile?: boolean };
 export type PhotoDraft = { uri: string; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
 export type MediaDraft = PhotoDraft & { kind: 'PHOTO' | 'AUDIO' | 'VIDEO'; durationMs?: number; mimeType?: string; byteSize?: number };
 const base = '/pet-companion';
@@ -31,7 +32,8 @@ export function useCompanion() {
       if (!demo) return api.get<CompanionListResponse<Observation>>(`${base}/observations?petId=${activePet.id}&limit=${OBSERVATION_PAGE_SIZE}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''}`);
       const data = await getDemo();
       const owned = data.observations.filter(o => o.petId === activePet.id).map(o => ({ ...o, feedback: data.feedback.filter(f => f.observationId === o.id) }));
-      return pageObservations(owned, pageParam);
+      const page = pageObservations(owned, pageParam);
+      return { ...page, items: await playableDemoObservations(page.items) };
     },
     getNextPageParam: page => page.nextCursor ?? undefined,
     refetchInterval: query => query.state.data?.pages.some(page => page.items.some(o => o.status === 'QUEUED' || o.status === 'PROCESSING')) ? 2500 : false,
@@ -49,12 +51,17 @@ export function useCompanion() {
   const submitMedia = async (draft: MediaDraft) => {
     let result: Observation;
     if (draft.kind === 'VIDEO' && !demo) throw new Error('VIDEO_LOCAL_ONLY');
-    if (demo) result = await changeDemo(data => {
-      if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
-      const existing = data.observations.find(o => o.id === draft.idempotencyKey); if (existing) return existing;
-      const observation = buildDemoObservation(draft, data.observations, data.feedback);
-      data.observations.push(observation); return observation;
-    });
+    if (demo) {
+      const existing = (await getDemo()).observations.find(o => o.id === draft.idempotencyKey);
+      const durable = existing ? null : await durableDemoMediaUri({ uri: draft.uri, kind: draft.kind, petId: draft.petId, observationId: draft.idempotencyKey, mimeType: draft.mimeType });
+      const mediaDraft = durable ? { ...draft, uri: durable.uri, mimeType: durable.mimeType ?? draft.mimeType, byteSize: durable.byteSize ?? draft.byteSize } : draft;
+      result = await changeDemo(data => {
+        if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+        const already = data.observations.find(o => o.id === mediaDraft.idempotencyKey); if (already) return already;
+        const observation = buildDemoObservation(mediaDraft, data.observations, data.feedback);
+        data.observations.push(observation); return observation;
+      });
+    }
     else if (draft.kind === 'PHOTO' || draft.kind === 'AUDIO') {
       const form = new FormData(); form.append('petId', draft.petId); form.append('kind', draft.kind); form.append('question', draft.question); form.append('contextTags', JSON.stringify(draft.contextTags));
       if (draft.durationMs) form.append('durationMs', String(draft.durationMs));
@@ -73,12 +80,16 @@ export function useCompanion() {
     await invalidate();
   };
   const removePet = async (id: string) => {
+    const removedIds = demo ? (await getDemo()).observations.filter(o => o.petId === id).map(o => o.id) : [];
     if (demo && Platform.OS !== 'web') {
       const owned = (await getDemo()).observations.filter(o => o.petId === id);
       const files = [...owned.map(o => o.localPhotoUri), ...owned.map(o => o.localAudioUri), ...owned.map(o => o.localVideoUri)];
       for (const uri of files) if (uri?.startsWith(FileSystem.documentDirectory + 'companion-photos/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-audio/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-videos/')) await FileSystem.deleteAsync(uri, { idempotent: true });
     }
-    if (demo) await changeDemo(data => { const deleted = new Set(data.observations.filter(o => o.petId === id).map(o => o.id)); data.pets = data.pets.filter(p => p.id !== id); data.observations = data.observations.filter(o => o.petId !== id); data.feedback = data.feedback.filter(f => !deleted.has(f.observationId)); data.checkins = data.checkins.filter(item => item.petId !== id); data.conversations = data.conversations.filter(item => item.petId !== id); });
+    if (demo) {
+      await changeDemo(data => { const deleted = new Set(data.observations.filter(o => o.petId === id).map(o => o.id)); data.pets = data.pets.filter(p => p.id !== id); data.observations = data.observations.filter(o => o.petId !== id); data.feedback = data.feedback.filter(f => !deleted.has(f.observationId)); data.checkins = data.checkins.filter(item => item.petId !== id); data.conversations = data.conversations.filter(item => item.petId !== id); });
+      await forgetPetDemoMedia(id, removedIds);
+    }
     else { try { await api.delete(`${base}/pets/${id}`); } finally { await invalidate(); } }
     await invalidate();
   };
@@ -94,7 +105,7 @@ export function useCompanion() {
 export function useObservation(id: string) {
   const { key, demo, observations } = useCompanion();
   return useQuery({ queryKey: [...key, 'observation', id], enabled: !!id, queryFn: async (): Promise<Observation> => {
-    if (demo) { const state = await getDemo(); const observation = state.observations.find(o => o.id === id); if (!observation) throw new Error('NOT_FOUND'); return { ...observation, feedback: state.feedback.filter(f => f.observationId === id) }; }
+    if (demo) { const state = await getDemo(); const observation = state.observations.find(o => o.id === id); if (!observation) throw new Error('NOT_FOUND'); const [playable] = await playableDemoObservations([{ ...observation, feedback: state.feedback.filter(f => f.observationId === id) }]); return playable; }
     return api.get<Observation>(`${base}/observations/${id}`);
   }, initialData: () => observations.data?.pages.flatMap(page => page.items).find(o => o.id === id), refetchInterval: q => q.state.data && ['QUEUED', 'PROCESSING'].includes(q.state.data.status) ? 2500 : false });
 }
