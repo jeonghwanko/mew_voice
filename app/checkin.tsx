@@ -5,6 +5,7 @@ import type { CompanionCheckinKind } from '@findthem/shared';
 import { Body, Button, Card, Chip, ErrorNote, Field, Heading, Loading, Screen, s } from '../src/ui/components';
 import { colors as c } from '../src/ui/theme';
 import { useCheckin, useCheckins, checkinLabels } from '../src/features/companion/useCheckins';
+import { checkinExitHref } from '../src/features/companion/checkinNavigation';
 import { newRequestId } from '../src/features/companion/useCompanion';
 import { sessionStorage } from '../src/core/storage';
 import { useSession } from '../src/core/session';
@@ -17,7 +18,7 @@ function parseKst(value: string) { if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v
 type Draft = { kind: CompanionCheckinKind; note: string; occurredText: string; idempotencyKey: string };
 
 export default function Checkin() {
-  const params = useLocalSearchParams<{ id?: string; kind?: string }>(); const { session } = useSession(); const checkins = useCheckins(); const existing = useCheckin(params.id);
+  const params = useLocalSearchParams<{ id?: string; kind?: string; returnTo?: string; conversationId?: string; petId?: string }>(); const { session } = useSession(); const checkins = useCheckins(); const existing = useCheckin(params.id);
   const [draft, setDraft] = useState<Draft>({ kind: validKind(params.kind) ? params.kind : 'PLAY', note: '', occurredText: kstInput(), idempotencyKey: newRequestId() });
   const [loadedKey, setLoadedKey] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const pet = checkins.activePet; const key = `companion_checkin_draft_${session?.mode}_${session?.userId}_${pet?.id ?? 'none'}_${params.id ?? 'new'}`;
@@ -40,14 +41,15 @@ export default function Checkin() {
     return () => { live = false; };
   }, [key, editMode, existing.data, pet?.id, params.kind]);
   useEffect(() => { if (loadedKey === key) void sessionStorage.set(key, JSON.stringify(draft)).catch(() => undefined); }, [draft, key, loadedKey]);
+  const leave = () => { router.replace(checkinExitHref(params)); };
   const save = async () => {
     if (!pet) return; if (editMode && (!existing.data || existing.data.petId !== pet.id)) { setError('수정할 기록을 다시 불러온 뒤 저장해 주세요.'); return; } const occurredAt = parseKst(draft.occurredText); if (!occurredAt) { setError('발생 시각을 2026-09-10 19:20 형식으로 입력해 주세요.'); return; }
     if (draft.kind === 'NOTE' && !draft.note.trim()) { setError('메모 남기기에는 내용을 적어 주세요.'); return; }
     setBusy(true); setError(''); setConflict(false);
-    try { if (editMode) await checkins.update(params.id!, { version: existing.data!.version, kind: draft.kind, note: draft.note.trim() || null, occurredAt }); else await checkins.create({ petId: pet.id, kind: draft.kind, note: draft.note.trim() || undefined, occurredAt, idempotencyKey: draft.idempotencyKey }); await sessionStorage.remove(key); router.replace('/'); }
+    try { if (editMode) await checkins.update(params.id!, { version: existing.data!.version, kind: draft.kind, note: draft.note.trim() || null, occurredAt }); else await checkins.create({ petId: pet.id, kind: draft.kind, note: draft.note.trim() || undefined, occurredAt, idempotencyKey: draft.idempotencyKey }); await sessionStorage.remove(key); leave(); }
     catch (cause) { if (cause instanceof ApiError && cause.status === 409) { setConflict(true); setError('다른 곳에서 이 기록이 수정되었어요. 작성 중인 내용은 그대로 남아 있어요.'); } else setError(errorMessage(cause)); } finally { setBusy(false); }
   };
-  const remove = () => { if (!params.id || !existing.data) return; const execute = () => { setBusy(true); setError(''); void checkins.remove(params.id!, existing.data!.version).then(async () => { await sessionStorage.remove(key); router.replace('/'); }).catch(cause => { if (cause instanceof ApiError && cause.status === 409) { setConflict(true); setError('다른 곳에서 이 기록이 수정되었어요. 최신 내용을 다시 불러온 뒤 삭제할 수 있어요.'); } else setError(errorMessage(cause)); }).finally(() => setBusy(false)); };
+  const remove = () => { if (!params.id || !existing.data) return; const execute = () => { setBusy(true); setError(''); void checkins.remove(params.id!, existing.data!.version).then(async () => { await sessionStorage.remove(key); leave(); }).catch(cause => { if (cause instanceof ApiError && cause.status === 409) { setConflict(true); setError('다른 곳에서 이 기록이 수정되었어요. 최신 내용을 다시 불러온 뒤 삭제할 수 있어요.'); } else setError(errorMessage(cause)); }).finally(() => setBusy(false)); };
     const copy = '이 보호자 기록을 삭제할까요? 삭제한 기록은 되돌릴 수 없어요.'; if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; } Alert.alert('기록을 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
   };
   const reload = () => { setConflict(false); void existing.refetch(); };
