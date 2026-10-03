@@ -31,13 +31,13 @@ function recordedTimeText(value: string) { const date = new Date(value); return 
 
 export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
-  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [timeEditing, setTimeEditing] = useState(false); const [timeText, setTimeText] = useState(''); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
+  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [timeEditing, setTimeEditing] = useState(false); const [timeText, setTimeText] = useState(''); const [reactionTime, setReactionTime] = useState<{ id: string; version: number } | null>(null); const [reactionTimeText, setReactionTimeText] = useState(''); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const data = observation.data; const inference = data?.inference;
   const reactionMoments = useCitedReactionMoments(inference?.citedObservationIds ?? []);
   const citedReactions = observationCitedReactions(inference?.citedObservationIds, reactionMoments);
   const latest = latestSavedFeedback(data?.feedback);
   const finish = async () => {
-    setEditing(null); setAction(''); setReaction(''); setNote(''); setConflict(false);
+    setEditing(null); setAction(''); setReaction(''); setNote(''); setConflict(false); setReactionTime(null); setReactionTimeText('');
     const next = observationExitHref(params);
     if (next) router.replace(next); else await observation.refetch();
   };
@@ -54,6 +54,7 @@ export default function ObservationScreen() {
   };
   const startEdit = (item: { id: string; action?: string | null; reaction?: string | null; note?: string | null }) => {
     if (!companion.demo) { setError(errorMessage(new Error('REACTION_ACCOUNT_READONLY'))); return; }
+    setReactionTime(null); setReactionTimeText('');
     setEditing({ id: item.id, version: feedbackVersion(item) });
     setAction(item.action ?? ''); setReaction(item.reaction ?? ''); setNote(item.note ?? '');
     setError(''); setConflict(false);
@@ -96,6 +97,7 @@ export default function ObservationScreen() {
   const startTime = () => {
     if (!data) return;
     if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_TIME_ACCOUNT_READONLY'))); return; }
+    setReactionTime(null); setReactionTimeText('');
     setTimeEditing(true); setTimeText(recordedTimeText(data.createdAt)); setError('');
   };
   const cancelTime = () => { setTimeEditing(false); setTimeText(''); setError(''); };
@@ -109,6 +111,28 @@ export default function ObservationScreen() {
     try {
       await companion.updateObservationTime(id, createdAt);
       setTimeEditing(false); setTimeText('');
+      await observation.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+  const startReactionTime = (item: { id: string; happenedAt?: string | null; createdAt?: string | null }) => {
+    if (!companion.demo) { setError(errorMessage(new Error('REACTION_TIME_ACCOUNT_READONLY'))); return; }
+    setTimeEditing(false); setTimeText('');
+    setReactionTime({ id: item.id, version: feedbackVersion(item) });
+    setReactionTimeText(recordedTimeText(item.happenedAt || item.createdAt || ''));
+    setError(''); setConflict(false);
+  };
+  const cancelReactionTime = () => { setReactionTime(null); setReactionTimeText(''); setError(''); };
+  const saveReactionTime = async () => {
+    if (!reactionTime) return;
+    const trimmed = reactionTimeText.trim();
+    if (!trimmed) { setError('반응 시각을 입력해 주세요.'); return; }
+    const happenedAt = parseKst(trimmed);
+    if (!happenedAt) { setError('반응 시각을 2026-09-10 19:20 형식으로 입력해 주세요.'); return; }
+    if (new Date(happenedAt).getTime() > Date.now()) { setError(errorMessage(new Error('REACTION_TIME_FUTURE'))); return; }
+    setBusy(true); setError('');
+    try {
+      await companion.updateFeedbackTime(id, reactionTime.id, happenedAt, reactionTime.version);
+      setReactionTime(null); setReactionTimeText('');
       await observation.refetch();
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
@@ -211,7 +235,7 @@ export default function ObservationScreen() {
         {!!citedReactions.length && <><Heading>함께 참고한 이전 기록</Heading>{citedReactions.map(item => <View key={item.id}>{item.line ? <Body>{item.line}</Body> : null}{item.open ? <Button title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(item.id, params))} /> : null}</View>)}</>}
       </>}
       <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>{editing ? (editing.id === latest?.id ? '저장한 최근 반응을 고치고 있어요. 새 반응을 추가하지 않아요.' : '저장한 이전 반응을 고치고 있어요. 새 반응을 추가하지 않아요.') : '실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.'}</Body>
-      {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && <><Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={() => startEdit(item)} /><Button title="이 반응 삭제" danger disabled={busy} onPress={() => removeReaction(item)} /></>}</Card>)}
+      {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && <>{reactionTime?.id === item.id ? <><Body muted>이 반응의 시각만 고쳐요. 같은 반응 문장과 관찰의 사진·울음·영상, 질문, 상황 태그는 그대로 두어요. 새 반응을 만들지 않아요.</Body><Field label="반응 시각 · 한국 시간(KST)" placeholder="2026-09-10 19:20" value={reactionTimeText} onChangeText={setReactionTimeText} editable={!busy} /><ErrorNote message={error} /><Button title="시각 저장" busy={busy} disabled={busy || !reactionTimeText.trim()} onPress={() => void saveReactionTime()} /><Button title="시각 수정 취소" secondary disabled={busy} onPress={cancelReactionTime} /></> : <><Body>{recordedTimeText(item.happenedAt || item.createdAt)}</Body>{companion.demo ? <Button title="이 반응 시각 수정" secondary disabled={busy || reactionTime !== null} onPress={() => startReactionTime(item)} /> : <Body muted>이 계정에 남긴 반응 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}<Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={() => startEdit(item)} /><Button title="이 반응 삭제" danger disabled={busy} onPress={() => removeReaction(item)} /></>}</Card>)}
       <View style={[s.row, { marginTop: 16 }]}>{actions.map(v => <Chip key={v} label={v} selected={action === v} onPress={() => { if (!busy) setAction(v); }} />)}<Chip label="기타" selected={!actions.includes(action) && !!action} onPress={() => { if (!busy) setAction(''); }} /></View>
       <Field label="해 본 행동" value={action} editable={!busy} onChangeText={setAction} maxLength={500} placeholder="직접 쓴 행동 · 선택" />
       <Heading>그 뒤 반응은 어땠나요?</Heading><View style={s.row}>{reactions.map(v => <Chip key={v} label={v} selected={reaction === v} onPress={() => { if (!busy) setReaction(v); }} />)}<Chip label="기타" selected={!reactions.includes(reaction) && !!reaction} onPress={() => { if (!busy) setReaction(''); }} /></View>

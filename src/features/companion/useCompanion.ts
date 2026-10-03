@@ -7,7 +7,7 @@ import type { CompanionDeletion, CompanionListResponse, CompanionPet, CompanionO
 import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
-import { deleteDemoFeedback, updateDemoFeedback, type UpdateDemoFeedbackInput } from './reactionStore';
+import { deleteDemoFeedback, updateDemoFeedback, updateDemoFeedbackTime, type UpdateDemoFeedbackInput } from './reactionStore';
 import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime, type UpdateDemoObservationCaptionInput, type UpdateDemoObservationMediaInput } from './observationStore';
 import { deleteDemoConversation, moveDemoConversation, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
 import { updateDemoPetProfile, type UpdateDemoPetProfileInput } from './petStore';
@@ -101,6 +101,13 @@ export function useCompanion() {
     if (!demo) throw new Error('REACTION_ACCOUNT_READONLY');
     await deleteDemoFeedback(observationId, feedbackId, version);
     await invalidate();
+  };
+  // Account mode can add a reaction. There is no route that rewrites a saved reaction time. Do not pretend a server update happened.
+  const updateFeedbackTime = async (observationId: string, feedbackId: string, happenedAt: string, version: number) => {
+    if (!demo) throw new Error('REACTION_TIME_ACCOUNT_READONLY');
+    const record = await updateDemoFeedbackTime(observationId, feedbackId, happenedAt, version);
+    await invalidate();
+    return record;
   };
   // Account mode has no route that rewrites a saved question or context tags. Do not pretend a server update happened.
   const updateObservationCaption = async (id: string, input: UpdateDemoObservationCaptionInput) => {
@@ -204,7 +211,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, updateObservationTime, replaceObservationMedia, moveObservation, removeObservation, removeConversation, updateConversationQuestion, updateConversationTime, moveConversation, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateFeedbackTime, updateObservationCaption, updateObservationTime, replaceObservationMedia, moveObservation, removeObservation, removeConversation, updateConversationQuestion, updateConversationTime, moveConversation, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {

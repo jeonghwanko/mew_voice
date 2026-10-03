@@ -36,6 +36,37 @@ export async function updateDemoFeedback(observationId: string, feedbackId: stri
   });
 }
 
+
+function normalizeReactionTime(value: string, now: Date) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('INVALID_REACTION_TIME');
+  const date = new Date(value.trim());
+  if (!Number.isFinite(date.getTime())) throw new Error('INVALID_REACTION_TIME');
+  if (!Number.isFinite(now.getTime()) || date.getTime() > now.getTime()) throw new Error('REACTION_TIME_FUTURE');
+  return date.toISOString();
+}
+
+/**
+ * Correct the saved time on one reaction, latest or earlier, on this observation.
+ * The same reaction id, action, reaction text, and note stay. Nothing new is inserted.
+ * The observation id, media, question, tags, and inference stay.
+ * An empty or future time is refused and the previous time stays.
+ * Stored conversation text is left untouched.
+ */
+export async function updateDemoFeedbackTime(observationId: string, feedbackId: string, happenedAt: string, version: number, now = new Date()): Promise<FeedbackRecord> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    if (!data.observations.some(item => item.id === observationId)) throw new Error('NOT_FOUND');
+    const index = data.feedback.findIndex(item => item.id === feedbackId && item.observationId === observationId);
+    if (index < 0) throw new Error('NOT_FOUND');
+    const current = data.feedback[index];
+    if (feedbackVersion(current) !== version) throw new Error('EDIT_CONFLICT');
+    const recordedAt = normalizeReactionTime(happenedAt, now);
+    const updated: FeedbackRecord = { ...current, happenedAt: recordedAt, createdAt: recordedAt, version: feedbackVersion(current) + 1 };
+    data.feedback[index] = updated;
+    return updated;
+  });
+}
+
 /**
  * Remove that reaction. Nothing is inserted in its place.
  * Later reactions, the media, and the cat stay. A missing row is already gone.
