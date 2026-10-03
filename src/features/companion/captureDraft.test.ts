@@ -14,3 +14,10 @@ test('corrupt or incomplete device data is ignored', () => {
     expect(readCaptureDraft(raw, 'AUDIO')).toBeNull();
   }
 });
+
+test('video draft restores only a clip of about ten seconds', () => {
+  const raw = JSON.stringify({ ...photo, kind: 'VIDEO', durationMs: 10000, uri: 'file://clip.mp4' });
+  expect(readCaptureDraft(raw, 'PHOTO')).toBeNull();
+  expect(readCaptureDraft(raw, 'VIDEO')?.durationMs).toBe(10000);
+  expect(readCaptureDraft(JSON.stringify({ ...photo, kind: 'VIDEO', durationMs: 12000 }), 'VIDEO')).toBeNull();
+});

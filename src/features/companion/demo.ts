@@ -3,7 +3,9 @@ import { readDemo, writeDemo } from '../../core/storage';
 
 export type FeedbackRecord = CompanionFeedback;
 export type ChatReply = { id: string; text: string; citedObservationIds: string[] };
-export type DemoState = { version: 1; checkins: CompanionCheckin[]; checkinRequests: Record<string, string>; pets: CompanionPet[]; observations: (CompanionObservation & { localPhotoUri?: string })[]; feedback: FeedbackRecord[]; consent: CompanionConsent };
+export type DemoObservation = CompanionObservation & { localPhotoUri?: string; localVideoUri?: string };
+export type DemoState = { version: 1; checkins: CompanionCheckin[]; checkinRequests: Record<string, string>; pets: CompanionPet[]; observations: DemoObservation[]; feedback: FeedbackRecord[]; consent: CompanionConsent };
+export type DemoMediaDraft = { uri: string; kind: 'PHOTO' | 'AUDIO' | 'VIDEO'; durationMs?: number; mimeType?: string; byteSize?: number; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
 export const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 export function initialDemo(): DemoState {
   const date = new Date().toISOString();
@@ -12,7 +14,25 @@ export function initialDemo(): DemoState {
 export function demoInference(observation: CompanionObservation, previous: CompanionObservation[], feedback: FeedbackRecord[]): CompanionInference {
   const knownIds = new Set(previous.filter(item => item.petId === observation.petId && item.id !== observation.id && item.createdAt <= observation.createdAt).map(item => item.id));
   const memory = feedback.filter(item => knownIds.has(item.observationId)).slice(-1)[0];
-  return { id: createId(), observationId: observation.id, status: 'ABSTAINED', utterance: null, confidence: 'low', reason: '체험 모드에서는 AI를 호출하지 않아요.', observation: ['보호자가 사진과 상황을 입력했어요. 체험 모드에서는 사진 속 자세나 소리를 분석하지 않아요.'], possibilities: [{ label: '실제 해석은 아직 없어요', reason: '아래 행동 기록과 기억 흐름을 체험할 수 있어요.' }], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.'], suggestedAction: '지금 우리 아이가 무엇을 하는지 지켜보고, 해 본 행동과 이후 반응을 남겨 보세요.', citedObservationIds: memory ? [memory.observationId] : [], createdAt: new Date().toISOString() };
+  const seen = observation.kind === 'VIDEO'
+    ? '보호자가 약 10초 영상을 남겼어요. 체험 모드에서는 영상을 분석하지 않아요.'
+    : observation.kind === 'AUDIO'
+      ? '보호자가 울음 녹음을 남겼어요. 체험 모드에서는 소리를 분석하지 않아요.'
+      : '보호자가 사진과 상황을 입력했어요. 체험 모드에서는 사진 속 자세나 소리를 분석하지 않아요.';
+  return { id: createId(), observationId: observation.id, status: 'ABSTAINED', utterance: null, confidence: 'low', reason: '체험 모드에서는 AI를 호출하지 않아요.', observation: [seen], possibilities: [{ label: '실제 해석은 아직 없어요', reason: '아래 행동 기록과 기억 흐름을 체험할 수 있어요.' }], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.', '기록은 이 기기에만 남아요.', '소리나 영상을 특정 감정으로 번역하지 않아요.'], suggestedAction: '지금 우리 아이가 무엇을 하는지 지켜보고, 해 본 행동과 이후 반응을 남겨 보세요.', citedObservationIds: memory ? [memory.observationId] : [], createdAt: new Date().toISOString() };
+}
+/** Local demo record only. The media file stays on device; url is never a server upload. */
+export function buildDemoObservation(draft: DemoMediaDraft, previous: CompanionObservation[], feedback: FeedbackRecord[], now = new Date()): DemoObservation {
+  if (draft.kind === 'VIDEO' && (typeof draft.durationMs !== 'number' || !Number.isFinite(draft.durationMs) || draft.durationMs <= 0 || draft.durationMs > 11_000)) throw new Error('VIDEO_TOO_LONG');
+  const createdAt = now.toISOString();
+  const observation: DemoObservation = { id: draft.idempotencyKey, petId: draft.petId, kind: draft.kind, question: draft.question || null, contextTags: draft.contextTags, status: 'ABSTAINED', failureCode: null, createdAt, completedAt: createdAt, media: [], inference: null, feedback: [] };
+  if (draft.kind === 'PHOTO') observation.localPhotoUri = draft.uri;
+  if (draft.kind === 'VIDEO') {
+    observation.localVideoUri = draft.uri;
+    observation.media = [{ kind: 'VIDEO', mimeType: draft.mimeType || 'video/mp4', byteSize: draft.byteSize && draft.byteSize > 0 ? draft.byteSize : 0, durationMs: draft.durationMs ?? null, url: '' }];
+  }
+  observation.inference = demoInference(observation, previous, feedback);
+  return observation;
 }
 export function groundedDemoReply(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[]): ChatReply {
   const allowed = new Set(observations.filter(item => item.petId === petId).map(item => item.id));

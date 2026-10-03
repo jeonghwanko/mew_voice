@@ -24,7 +24,8 @@ export default function Pet() {
     <Body muted>보호자가 확인한 정보만 보여드려요. 사진이나 AI 해석으로 추정한 특성은 프로필에 저장하지 않아요.</Body>
     <View style={[s.row, { marginTop: 14 }]}>{companion.pets.data?.map(pet => <Chip key={pet.id} label={pet.name} selected={companion.activePet?.id === pet.id} onPress={() => void companion.selectPet(pet.id)} />)}</View>
     {companion.pets.isLoading ? <Loading /> : <ErrorNote message={companion.pets.error ? errorMessage(companion.pets.error) : null} />}
-    {companion.pets.data?.map(pet => <Card key={pet.id}><View style={styles.nameRow}><View style={styles.paw}><Ionicons name="paw" color={c.primary} size={22} /></View><View style={{ flex: 1 }}><Text style={styles.name}>{pet.name}</Text><Text style={styles.species}>고양이 · 등록 정보</Text></View></View>
+    {companion.pets.data?.map(pet => <Card key={pet.id}><View style={styles.nameRow}><View style={styles.paw}><Ionicons name="paw" color={c.primary} size={22} /></View><View style={{ flex: 1 }}><Text style={styles.name}>{pet.name}</Text><Text style={styles.species}>{companion.demo && pet.id === 'demo-momo' ? '체험용 가상 프로필 · 실존하는 고양이가 아니에요' : '고양이 · 등록 정보'}</Text></View></View>
+      {companion.demo && pet.id === 'demo-momo' && <Body>모모는 지어낸 체험 프로필이에요. 실존하는 고양이가 아니에요.</Body>}
       <View style={styles.traits}><Trait label="나이" value={traitText(pet.confirmedTraits.age)} /><Trait label="품종" value={traitText(pet.confirmedTraits.breed)} /><Trait label="성별" value={traitText(pet.confirmedTraits.sex)} /></View>
       <Button title={`${pet.name} 삭제`} secondary danger busy={busy} onPress={() => requestRemoval(pet.id, pet.name)} />
     </Card>)}

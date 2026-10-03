@@ -9,6 +9,8 @@
   "exclude": [
     "node_modules", "android", "ios",
     "babel.config.js", "metro.config.js", "jest.config.js",
-    "dist", "output", "store-assets", "store-screenshots"
+    "dist", "output", "store-assets", "store-screenshots",
+    "packages/shared/**/*.test.ts",
+    "packages/shared/vitest.config.ts"
   ]
 }

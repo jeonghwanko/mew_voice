@@ -15,7 +15,7 @@ export function StudioWelcome({ busy, error, onDemo, onLogin }: { busy: boolean;
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       <Pressable accessibilityRole="button" disabled={busy} onPress={onDemo} style={styles.primary}>{busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryText}>체험으로 살펴보기</Text>}</Pressable>
       <Pressable accessibilityRole="button" disabled={busy} onPress={onLogin} style={styles.secondary}><Text style={styles.secondaryText}>계정으로 시작하기</Text></Pressable>
-      <Text style={styles.note}>체험은 이 기기에만 저장돼요.{ '\n' }실제 AI 분석 없이 먼저 둘러볼 수 있어요.</Text>
+      <Text style={styles.note}>체험 기록은 이 기기에만 남아요.{ '\n' }실제 AI 분석이 아니에요.</Text>
     </View>
   </SafeAreaView>;
 }

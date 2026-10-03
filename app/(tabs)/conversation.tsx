@@ -53,7 +53,7 @@ export default function Conversation() {
   };
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen title="우리 아이에게 물어보기" subtitle="MEMORIES, HELD GENTLY">
-    {companion.demo && <Card accent><Heading>기기 내 체험</Heading><Body muted>실제 AI 답변이 아니에요. 저장한 관찰 기록과 보호자 반응만 찾아 보여드려요.</Body></Card>}
+    {companion.demo && <Card accent><Heading>기기 내 체험</Heading><Body muted>관찰 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요. 저장한 기록과 보호자 반응만 찾아 보여드려요.</Body></Card>}
     <View style={[s.row, { marginBottom: 14 }]}>{companion.pets.data?.map(pet => <Chip key={pet.id} label={pet.name} selected={selectedPet?.id === pet.id} onPress={() => void companion.selectPet(pet.id)} />)}</View>
     {!selectedPet && <Empty title="먼저 우리 아이를 등록해 주세요" detail="아이별 기록을 바탕으로 대화를 이어가요."><Button title="우리 아이 등록하기" onPress={() => router.push('/pets/new')} /></Empty>}
     {selectedPet && <>

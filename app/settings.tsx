@@ -15,7 +15,7 @@ export default function Settings() {
   const saveStorage = async (value: boolean) => { setBusy(true); setError(''); try { await companion.saveConsent(value, false); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); } };
   const exportData = async () => {
     setBusy(true); setError('');
-    try { const data = companion.demo ? await getDemo() : await api.get<unknown>('/pet-companion/data-export'); const json = JSON.stringify(data, (key, value) => key === 'localPhotoUri' ? undefined : value, 2); setExportPreview(json); if (Platform.OS !== 'web') await Share.share({ title: '우리 아이 기록 내보내기', message: json }); }
+    try { const data = companion.demo ? await getDemo() : await api.get<unknown>('/pet-companion/data-export'); const json = JSON.stringify(data, (key, value) => key === 'localPhotoUri' || key === 'localVideoUri' ? undefined : value, 2); setExportPreview(json); if (Platform.OS !== 'web') await Share.share({ title: '우리 아이 기록 내보내기', message: json }); }
     catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
   const signOut = () => {
@@ -43,7 +43,7 @@ export default function Settings() {
     ]);
   };
   return <Screen title="설정" subtitle="PRIVATE BY DEFAULT">
-    <Card accent><Heading>{session?.mode === 'demo' ? '기기 내 체험 모드' : '계정 연결됨'}</Heading><Body>{session?.name ?? '보호자'}</Body><Body muted>{session?.mode === 'demo' ? '기록은 이 기기에만 저장되며 실제 AI를 호출하지 않아요.' : '개발 API에 연결된 비공개 기록이에요.'}</Body></Card>
+    <Card accent><Heading>{session?.mode === 'demo' ? '기기 내 체험 모드' : '계정 연결됨'}</Heading><Body>{session?.name ?? '보호자'}</Body><Body muted>{session?.mode === 'demo' ? '기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요.' : '개발 API에 연결된 비공개 기록이에요.'}</Body></Card>
     <Heading>기록과 동의</Heading><Card><View style={styles.row}><View style={{ flex: 1 }}><Text style={styles.label}>기록 보관</Text><Body muted>새 사진, 질문, 관찰 결과의 저장을 허용해요. 끄더라도 기존 기록은 삭제되지 않아요.</Body></View><Switch value={!!companion.consent.data?.serviceStorage} disabled={busy} onValueChange={value => void saveStorage(value)} trackColor={{ false: c.border, true: c.primaryDark }} thumbColor={companion.consent.data?.serviceStorage ? c.primary : c.muted} /></View>
       <View style={styles.disabled}><Text style={styles.label}>연구용 학습 참여</Text><Body muted>현재는 지원하지 않아요. 이 앱은 연구 학습에 기록을 사용하지 않습니다.</Body><Switch value={false} disabled trackColor={{ false: c.border, true: c.border }} thumbColor={c.muted} /></View></Card>
     <Heading>내 기록</Heading><Card><Body muted>보관 중인 정보를 JSON 형식으로 확인하거나 공유할 수 있어요. 사진 원본은 포함하지 않아요.</Body><Button title="내 기록 내보내기" secondary busy={busy} icon="download-outline" onPress={() => void exportData()} />{exportPreview ? <Text selectable style={styles.preview}>{exportPreview.slice(0, 1800)}{exportPreview.length > 1800 ? '\n… 일부만 표시했어요.' : ''}</Text> : null}</Card>

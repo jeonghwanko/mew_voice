@@ -108,11 +108,11 @@ export default function CatStudio() {
           <View style={[styles.scene, keyboard && { minHeight: 100 }]}>
             <View style={styles.sceneHeading}>
               <Pressable accessibilityRole="button" accessibilityLabel="함께할 고양이 선택" onPress={() => setPicker(true)} style={styles.petSelector}><Text style={styles.headerTitle}>{pet?.name ?? '나의 고양이'}</Text><Ionicons name="chevron-down" size={14} color={c.muted} /></Pressable>
-              <Text style={styles.eyebrow}>{companion.demo ? '체험 고양이 · 우리만의 작은 공간' : '오늘도 너와 함께'}</Text>
+              <Text style={styles.eyebrow}>{pet?.id === 'demo-momo' ? '모모는 지어낸 체험 프로필이에요' : companion.demo ? '체험 · 기록은 이 기기에만 남아요' : '오늘도 너와 함께'}</Text>
             </View>
             <View style={[styles.stage, editing && !wide && (side === 'left' ? { marginLeft: 186 } : { marginRight: 186 })]}><CatStage focused={focused && !menuPage && !picker && !chatOpen} appearance={appearance.value} mood={mood} onPet={() => setPetting(true)} /></View>
             {!editing && <View style={[styles.quickActions, height < 700 && { gap: 8, top: 100 }]}>
-              <QuickAction name="talk" label="말 걸기" hint="내 목소리로 야옹 만들기" onPress={() => router.push('/meow')} />
+              <QuickAction name="talk" label="말 걸기" hint="놀이용 야옹이에요. 말의 뜻을 번역하지 않아요." onPress={() => router.push('/meow')} />
               <QuickAction name="listen" label="울음 듣기" hint="고양이 울음 녹음하고 살펴보기" onPress={() => router.push({ pathname: '/capture', params: { mode: 'audio' } })} />
               <QuickAction name="camera" label="사진 살피기" hint="사진으로 자세와 상황 살펴보기" onPress={() => router.push({ pathname: '/capture', params: { mode: 'photo' } })} />
             </View>}
@@ -140,7 +140,7 @@ export default function CatStudio() {
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}
           {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
           {!pet ? <Pressable accessibilityRole="button" onPress={() => navigateFromChat('/pets/new')} style={styles.register}><Text style={styles.registerText}>우리 아이 등록하기</Text></Pressable> : <View style={styles.inputRow}><TextInput accessibilityLabel="고양이에게 물어볼 내용" placeholder="오늘 궁금했던 이야기를 적어 주세요" placeholderTextColor={c.muted} style={styles.input} value={message} editable={!thinking} maxLength={1500} onChangeText={value => { setMessage(value); requestId.current = newRequestId(); }} onSubmitEditing={() => void send()} returnKeyType="send" /><Pressable accessibilityRole="button" accessibilityLabel="질문 보내기" disabled={!message.trim() || thinking} onPress={() => void send()} style={[styles.send, (!message.trim() || thinking) && { opacity: 0.45 }]}><Ionicons name="arrow-up" size={22} color="#FFFDF8" /></Pressable></View>}
-          <View style={[styles.shortcuts, keyboard && { display: 'none' }]}><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/meow')} style={styles.shortcut}><Ionicons name="mic-outline" size={16} color={c.accent} /><Text style={styles.shortcutText}>내 말을 야옹으로</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/capture')} style={styles.shortcut}><Ionicons name="camera-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>사진·울음</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/checkin')} style={styles.shortcut}><Ionicons name="add-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>기록</Text></Pressable></View>
+          <View style={[styles.shortcuts, keyboard && { display: 'none' }]}><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/meow')} style={styles.shortcut}><Ionicons name="mic-outline" size={16} color={c.accent} /><Text style={styles.shortcutText}>야옹 놀이</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/capture')} style={styles.shortcut}><Ionicons name="camera-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>사진·울음</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/checkin')} style={styles.shortcut}><Ionicons name="add-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>기록</Text></Pressable></View>
         </SafeAreaView>
         </KeyboardAvoidingView>
         </Modal>

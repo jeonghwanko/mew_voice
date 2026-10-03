@@ -21,6 +21,7 @@ function AppStack() {
     <Stack.Screen name="checkin" options={{ headerShown: false, presentation: 'modal' }} />
     <Stack.Screen name="pets/new" options={{ headerShown: false, presentation: 'modal' }} />
     <Stack.Screen name="observations/[id]" options={{ title: '관찰 기록' }} />
+    <Stack.Screen name="reports/weekly" options={{ headerShown: false }} />
     <Stack.Screen name="settings" options={{ title: '설정' }} />
     <Stack.Screen name="+not-found" options={{ title: '새로운 우리 아이' }} />
   </Stack>;

@@ -75,12 +75,12 @@ export default function Meow() {
   return <Screen title={'내 말이\n야옹이 되는 순간.'} subtitle="YOUR TURN, HUMAN">
     <View style={{alignItems:'center',marginBottom:22}}><Image source={require('../assets/mewvoice-icon.png')} style={{width:210,height:210,borderRadius:45}} accessibilityLabel="야옹하는 뮤 보이스 고양이" /></View>
     <Card><Badge>목소리로 만드는 야옹</Badge><Heading>{phase==='recording'?`말씀해 주세요 · ${(state.durationMillis/1000).toFixed(1)} / 6초`:phase==='ready'?'야옹이 준비됐어요!':'고양이에게 한마디 건네볼까요?'}</Heading>
-      <Body>말의 길이와 강약, 쉼을 따라 놀이용 고양이 소리를 만들어요. 녹음은 이 기기에서만 처리하고 변환 후 지워요.</Body>
+      <Body>말의 길이와 강약, 쉼을 따라 놀이용 소리를 만들어요. 뜻을 번역하는 기능이 아니에요. 녹음은 이 기기에서만 처리하고 변환 후 지워요.</Body>
       {phase==='recording'?<Button title="녹음 끝내고 야옹 만들기" icon="stop" onPress={()=>void stop()} />:<Button title={phase==='ready'?'다시 말하기':'눌러서 말하기'} icon="mic" busy={phase==='working'} onPress={()=>void start()} />}
       {phase==='ready'&&<Button title={playback.playing?'재생 멈추기':'야옹 들어보기'} icon={playback.playing?'pause':'play'} onPress={()=>{if(playback.playing)player.pause();else void player.seekTo(0).then(()=>player.play()).catch(()=>setError('재생하지 못했어요. 다시 녹음해 주세요.'));}} />}
     </Card>
     {denied&&<Card><Body>녹음하려면 마이크 권한이 필요해요.</Body>{Platform.OS!=='web'&&<Button title="설정 열기" secondary onPress={()=>void Linking.openSettings()} />}</Card>}
-    <ErrorNote message={error}/><Body muted>실제 고양이 언어 번역은 아니에요. 작은 소리로 짧게 들려주고, 고양이가 불편해하면 멈춰 주세요.</Body>
+    <ErrorNote message={error}/><Body muted>작은 소리로 짧게 들려주고, 고양이가 불편해하면 멈춰 주세요.</Body>
     <Button title="닫기" secondary onPress={()=>router.back()} />
   </Screen>;
 }

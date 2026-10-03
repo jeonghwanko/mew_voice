@@ -1,16 +1,17 @@
 import { usePetSelection } from '../../core/petSelection';
 import { resolveSelectedPet } from './daily';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import type { CompanionDeletion, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedbackInput, CompanionConversation, CreateCompanionPetInput } from '@findthem/shared';
+import type { CompanionDeletion, CompanionListResponse, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedbackInput, CompanionConversation, CreateCompanionPetInput } from '@findthem/shared';
 import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
-import { changeDemo, createId, demoInference, getDemo, groundedDemoReply } from './demo';
+import { buildDemoObservation, changeDemo, createId, getDemo, groundedDemoReply } from './demo';
+import { OBSERVATION_PAGE_SIZE, pageObservations } from './observationPages';
 
-export type Observation = CompanionObservation & { localPhotoUri?: string };
+export type Observation = CompanionObservation & { localPhotoUri?: string; localVideoUri?: string };
 export type PhotoDraft = { uri: string; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
-export type MediaDraft = PhotoDraft & { kind: 'PHOTO' | 'AUDIO'; durationMs?: number; mimeType?: string };
+export type MediaDraft = PhotoDraft & { kind: 'PHOTO' | 'AUDIO' | 'VIDEO'; durationMs?: number; mimeType?: string; byteSize?: number };
 const base = '/pet-companion';
 export const newRequestId = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.floor(Math.random() * 16); return (c === 'x' ? r : (r & 3) | 8).toString(16); });
 export function useCompanion() {
@@ -23,10 +24,18 @@ export function useCompanion() {
   const pets = useQuery({ queryKey: [...key, 'pets'], enabled: !!session, queryFn: async () => demo ? (await getDemo()).pets : (await api.get<{ pets: CompanionPet[] }>(`${base}/pets`)).pets });
   const activePet = selection.ready ? resolveSelectedPet(pets.data, selection.selectedPetId) : undefined;
   const consent = useQuery({ queryKey: [...key, 'consent'], enabled: !!session, queryFn: async () => demo ? (await getDemo()).consent : api.get<CompanionConsent>(`${base}/consent`) });
-  const observations = useQuery({ queryKey: [...key, 'observations', activePet?.id], enabled: !!session && !!activePet, queryFn: async (): Promise<Observation[]> => {
-    if (!demo) return (await api.get<{ items: Observation[] }>(`${base}/observations?petId=${activePet!.id}`)).items;
-    const data = await getDemo(); return [...data.observations].filter(o => o.petId === activePet?.id).reverse().map(o => ({ ...o, feedback: data.feedback.filter(f => f.observationId === o.id) }));
-  }, refetchInterval: q => q.state.data?.some(o => o.status === 'QUEUED' || o.status === 'PROCESSING') ? 2500 : false });
+  const observations = useInfiniteQuery({
+    queryKey: [...key, 'observations', activePet?.id], enabled: !!session && !!activePet, initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }): Promise<CompanionListResponse<Observation>> => {
+      if (!activePet) return { items: [], nextCursor: null };
+      if (!demo) return api.get<CompanionListResponse<Observation>>(`${base}/observations?petId=${activePet.id}&limit=${OBSERVATION_PAGE_SIZE}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''}`);
+      const data = await getDemo();
+      const owned = data.observations.filter(o => o.petId === activePet.id).map(o => ({ ...o, feedback: data.feedback.filter(f => f.observationId === o.id) }));
+      return pageObservations(owned, pageParam);
+    },
+    getNextPageParam: page => page.nextCursor ?? undefined,
+    refetchInterval: query => query.state.data?.pages.some(page => page.items.some(o => o.status === 'QUEUED' || o.status === 'PROCESSING')) ? 2500 : false,
+  });
   const deletions = useQuery({ queryKey: [...key, 'deletions'], enabled: !!session && !demo, queryFn: async () => (await api.get<{ items: CompanionDeletion[] }>(`${base}/deletions`)).items, refetchInterval: q => q.state.data?.some(item => item.status === 'PENDING') ? 5000 : false });
   const createPet = async (input: CreateCompanionPetInput) => {
     const result = demo ? await changeDemo(data => { const date = new Date().toISOString(); const pet: CompanionPet = { id: createId(), name: input.name, species: 'CAT', confirmedTraits: input.confirmedTraits ?? {}, profilePhotoUrl: null, createdAt: date, updatedAt: date }; data.pets.push(pet); return pet; }) : await api.post<CompanionPet>(`${base}/pets`, input);
@@ -39,14 +48,14 @@ export function useCompanion() {
   };
   const submitMedia = async (draft: MediaDraft) => {
     let result: Observation;
+    if (draft.kind === 'VIDEO' && !demo) throw new Error('VIDEO_LOCAL_ONLY');
     if (demo) result = await changeDemo(data => {
       if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
       const existing = data.observations.find(o => o.id === draft.idempotencyKey); if (existing) return existing;
-      const observation: Observation = { id: draft.idempotencyKey, petId: draft.petId, kind: draft.kind, question: draft.question || null, contextTags: draft.contextTags, status: 'ABSTAINED', failureCode: null, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(), media: [], inference: null, feedback: [] };
-      if (draft.kind === 'PHOTO') observation.localPhotoUri = draft.uri;
-      observation.inference = demoInference(observation, data.observations, data.feedback); data.observations.push(observation); return observation;
+      const observation = buildDemoObservation(draft, data.observations, data.feedback);
+      data.observations.push(observation); return observation;
     });
-    else {
+    else if (draft.kind === 'PHOTO' || draft.kind === 'AUDIO') {
       const form = new FormData(); form.append('petId', draft.petId); form.append('kind', draft.kind); form.append('question', draft.question); form.append('contextTags', JSON.stringify(draft.contextTags));
       if (draft.durationMs) form.append('durationMs', String(draft.durationMs));
       const name = draft.kind === 'PHOTO' ? 'observation.jpg' : 'cat-cry.m4a';
@@ -54,7 +63,7 @@ export function useCompanion() {
       if (Platform.OS === 'web') { const blob = await (await fetch(draft.uri)).blob(); form.append('media', blob, name); }
       else form.append('media', { uri: draft.uri, name, type } as unknown as Blob);
       result = await request<Observation>(`${base}/observations`, 'POST', form, undefined, { 'Idempotency-Key': draft.idempotencyKey });
-    }
+    } else throw new Error('VIDEO_LOCAL_ONLY');
     await invalidate(); return result;
   };
   const submitPhoto = (draft: PhotoDraft) => submitMedia({ ...draft, kind: 'PHOTO' });
@@ -65,8 +74,9 @@ export function useCompanion() {
   };
   const removePet = async (id: string) => {
     if (demo && Platform.OS !== 'web') {
-      const ownedPhotos = (await getDemo()).observations.filter(o => o.petId === id).map(o => o.localPhotoUri);
-      for (const uri of ownedPhotos) if (uri?.startsWith(FileSystem.documentDirectory + 'companion-photos/')) await FileSystem.deleteAsync(uri, { idempotent: true });
+      const owned = (await getDemo()).observations.filter(o => o.petId === id);
+      const files = [...owned.map(o => o.localPhotoUri), ...owned.map(o => o.localVideoUri)];
+      for (const uri of files) if (uri?.startsWith(FileSystem.documentDirectory + 'companion-photos/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-videos/')) await FileSystem.deleteAsync(uri, { idempotent: true });
     }
     if (demo) await changeDemo(data => { const deleted = new Set(data.observations.filter(o => o.petId === id).map(o => o.id)); data.pets = data.pets.filter(p => p.id !== id); data.observations = data.observations.filter(o => o.petId !== id); data.feedback = data.feedback.filter(f => !deleted.has(f.observationId)); data.checkins = data.checkins.filter(item => item.petId !== id); });
     else { try { await api.delete(`${base}/pets/${id}`); } finally { await invalidate(); } }
@@ -86,6 +96,6 @@ export function useObservation(id: string) {
   return useQuery({ queryKey: [...key, 'observation', id], enabled: !!id, queryFn: async (): Promise<Observation> => {
     if (demo) { const state = await getDemo(); const observation = state.observations.find(o => o.id === id); if (!observation) throw new Error('NOT_FOUND'); return { ...observation, feedback: state.feedback.filter(f => f.observationId === id) }; }
     return api.get<Observation>(`${base}/observations/${id}`);
-  }, initialData: () => observations.data?.find(o => o.id === id), refetchInterval: q => q.state.data && ['QUEUED', 'PROCESSING'].includes(q.state.data.status) ? 2500 : false });
+  }, initialData: () => observations.data?.pages.flatMap(page => page.items).find(o => o.id === id), refetchInterval: q => q.state.data && ['QUEUED', 'PROCESSING'].includes(q.state.data.status) ? 2500 : false });
 }
 
