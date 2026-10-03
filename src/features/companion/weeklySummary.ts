@@ -1,4 +1,4 @@
-import { dayKey } from './daily';
+import { dayKey, formatDiaryDay } from './daily';
 
 /** Same 7 KST calendar days as the diary streak, including today. */
 export const WEEKLY_WINDOW_DAYS = 7;
@@ -65,9 +65,7 @@ function inWindow(value: string, window: ReturnType<typeof weekWindow>) {
 }
 
 export function formatDayKey(key: string) {
-  const [year, month, day] = key.split('-');
-  if (!year || !month || !day) return key;
-  return `${year}년 ${Number(month)}월 ${Number(day)}일`;
+  return formatDiaryDay(key) || key;
 }
 
 function asMediaKind(value: string | undefined): WeeklyMediaKind | null {

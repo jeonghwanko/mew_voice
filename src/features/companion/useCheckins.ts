@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CompanionCheckin, CompanionListResponse, CreateCompanionCheckinInput, UpdateCompanionCheckinInput } from '@findthem/shared';
 import { useCompanion } from './useCompanion';
@@ -37,14 +38,52 @@ export function useCheckins() {
   };
   return { ...companion, list, items: list.data?.pages.flatMap(page => page.items) ?? [], create, update, remove };
 }
+export async function loadCheckinById(demo: boolean, id: string): Promise<CompanionCheckin> {
+  if (!demo) return api.get(`${base}/${id}`);
+  const record = (await getDemo()).checkins.find(item => item.id === id);
+  if (!record) throw new Error('NOT_FOUND');
+  return record;
+}
 export function useCheckin(id?: string) {
   const companion = useCompanion();
   return useQuery({ queryKey: [...companion.key, 'checkin', id], enabled: !!id,
-    queryFn: async (): Promise<CompanionCheckin> => {
-      if (!companion.demo) return api.get(`${base}/${id}`);
-      const record = (await getDemo()).checkins.find(item => item.id === id);
-      if (!record) throw new Error('NOT_FOUND');
-      return record;
+    queryFn: () => loadCheckinById(companion.demo, id!),
+  });
+}
+
+/** Occurred time for cited care, from the loaded list or the existing check-in read. Unknown ids stay absent. */
+export function useCitedCheckinMoments(ids: readonly string[]) {
+  const checkins = useCheckins();
+  const joined = ids.join('\0');
+  const unique = useMemo(() => [...new Set(joined.split('\0').filter(Boolean))], [joined]);
+  const known = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of checkins.items) {
+      const at = item.occurredAt || item.createdAt;
+      if (at) map.set(item.id, at);
+    }
+    return map;
+  }, [checkins.items]);
+  const missingKey = unique.filter(id => !known.has(id)).join('\0');
+  const extra = useQuery({
+    queryKey: [...checkins.key, 'cited-checkin-moments', missingKey],
+    enabled: missingKey.length > 0,
+    retry: false,
+    queryFn: async () => {
+      const pairs = await Promise.all(missingKey.split('\0').map(async id => {
+        try {
+          const record = await loadCheckinById(checkins.demo, id);
+          return [id, record.occurredAt || record.createdAt || ''] as const;
+        } catch {
+          return [id, ''] as const;
+        }
+      }));
+      return pairs;
     },
   });
+  return useMemo(() => {
+    const map = new Map(known);
+    for (const [id, at] of extra.data ?? []) if (at) map.set(id, at);
+    return map;
+  }, [known, extra.data]);
 }

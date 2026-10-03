@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +8,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { CompanionCheckin, CompanionObservation } from '@findthem/shared';
 import { MewIcon, type MewIconName } from '../../src/ui/MewIcon';
 import { studio as c } from '../../src/features/avatar/appearance';
-import { useCheckins, checkinLabels } from '../../src/features/companion/useCheckins';
+import { useCheckins, checkinLabels, useCitedCheckinMoments } from '../../src/features/companion/useCheckins';
+import { presentCareMention } from '../../src/features/companion/daily';
 import { appendDiaryPage, diaryConversationRows, diaryIntro, mergeDiaryRecords } from '../../src/features/companion/diaryTimeline';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { loadCheckinListPage, loadObservationListPage, loadWeeklyRecords } from '../../src/features/companion/weeklyPages';
@@ -42,7 +43,12 @@ export default function History() {
     enabled: !!petId,
     queryFn: () => loadWeeklyRecords(checkins.demo, petId!),
   });
-  const savedThreads = diaryConversationRows(threads.data?.items ?? [], petId);
+  const citedCheckinIds = useMemo(() => (threads.data?.items ?? []).flatMap(item => item.citedCheckinIds ?? []), [threads.data]);
+  const careMoments = useCitedCheckinMoments(citedCheckinIds);
+  const savedThreads = diaryConversationRows((threads.data?.items ?? []).map(item => ({
+    ...item,
+    answer: presentCareMention(item.answer, careMoments.get(item.citedCheckinIds?.[0] ?? '')) ?? item.answer,
+  })), petId);
   const olderForPet = older && older.petId === petId && older.weekStamp === week.dataUpdatedAt ? older : null;
   const observationCursor = olderForPet ? olderForPet.observationsCursor : (week.data?.observationsNextCursor ?? null);
   const checkinCursor = olderForPet ? olderForPet.checkinsCursor : (week.data?.checkinsNextCursor ?? null);

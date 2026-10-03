@@ -7,6 +7,8 @@ import { Body, Button, Card, Chip, Empty, ErrorNote, Field, Heading, Loading, Sc
 import { colors as c } from '../../src/ui/theme';
 import { newRequestId, useCompanion } from '../../src/features/companion/useCompanion';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
+import { conversationCitedCheckinLink, presentCareMention } from '../../src/features/companion/daily';
+import { useCitedCheckinMoments } from '../../src/features/companion/useCheckins';
 import { api, errorMessage } from '../../src/lib/api';
 
 type ConversationList = { items: CompanionConversation[]; nextCursor: string | null };
@@ -58,6 +60,8 @@ export default function Conversation() {
   });
   const current = pending.data ?? active;
   const citations = useMemo(() => current?.citedObservationIds ?? [], [current]);
+  const careMoments = useCitedCheckinMoments(current?.citedCheckinIds ?? []);
+  const answerText = presentCareMention(current?.answer, careMoments.get(current?.citedCheckinIds?.[0] ?? ''));
 
   const send = async () => {
     if (!selectedPet || !message.trim()) return;
@@ -78,9 +82,9 @@ export default function Conversation() {
       <Field label="궁금한 점" value={message} onChangeText={value => { setMessage(value); setRequestId(newRequestId()); }} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} />
       <ErrorNote message={error || (pending.error ? errorMessage(pending.error) : null)} />
       <Button title={companion.demo ? '기록에서 찾아보기' : '기록을 바탕으로 물어보기'} busy={busy} disabled={!message.trim()} icon="send-outline" onPress={() => void send()} />
-      {current && <Card accent><Text style={styles.question}>“{current.question}”</Text>{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{current.answer ?? '아직 답변이 준비되지 않았어요.'}</Body>}
+      {current && <Card accent><Text style={styles.question}>“{current.question}”</Text>{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}
         {citations.map((id, index) => <Pressable key={id} accessibilityRole="link" onPress={() => router.push(`/observations/${id}`)}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
-        {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => router.push(`/checkin?id=${id}`)}><Text style={styles.link}>근거가 된 오늘 돌봄 기록 {index + 1} 보기 →</Text></Pressable>)}
+        {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => router.push(`/checkin?id=${id}`)}><Text style={styles.link}>{conversationCitedCheckinLink(careMoments.get(id), index)}</Text></Pressable>)}
       </Card>}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}

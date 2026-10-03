@@ -1,6 +1,7 @@
 import { changeDemo, getDemo, initialDemo } from './demo';
 import { saveDemoCheckin, updateDemoCheckin, deleteDemoCheckin } from './checkinStore';
-import { dayKey, isToday, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins } from './daily';
+import { citedCareName, conversationCitedCheckinLink, dayKey, formatDiaryDay, homeCitedCheckinLink, isToday, presentCareMention, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins } from './daily';
+import { formatDayKey } from './weeklySummary';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const draft = () => ({ petId: 'demo-momo', kind: 'PLAY' as const, note: '낚싯대 놀이', occurredAt: '2026-09-01T12:00:00.000Z', idempotencyKey: 'checkin-one' });
 beforeEach(async () => { await changeDemo(data => Object.assign(data, initialDemo())); });
@@ -67,4 +68,28 @@ it('keeps only the selected cat check-ins from the current KST day, newest first
   expect(todayCheckinSummary([])).toBeNull();
   expect(todayCheckinSummary(todayCheckins(items, 'demo-momo', now))).toEqual({ title: '특이사항 없어요', detail: '메모 없이 남긴 보호자 기록이에요 · 다른 기록: 놀아줬어요' });
   expect(todayCheckinSummary([{ kind: 'PLAY', note: '  낚싯대  ' }])).toEqual({ title: '놀아줬어요', detail: '낚싯대' });
+});
+
+it('names a cited check-in by the KST day and does not call an earlier day today', () => {
+  const now = new Date('2026-09-10T00:30:00Z');
+  const todayAt = '2026-09-09T15:00:00Z';
+  const earlierAt = '2026-09-09T14:59:59Z';
+  expect(dayKey(todayAt)).toBe('2026-09-10');
+  expect(formatDiaryDay('2026-09-09')).toBe(formatDayKey('2026-09-09'));
+  expect(citedCareName(todayAt, now)).toBe('오늘 돌봄');
+  expect(citedCareName(earlierAt, now)).toBe('2026년 9월 9일 돌봄');
+  expect(citedCareName('2026-09-10T15:00:00Z', now)).toBe('2026년 9월 11일 돌봄');
+  expect(citedCareName('not-a-time', now)).toBe('돌봄 기록');
+  expect(citedCareName(undefined, now)).toBe('돌봄 기록');
+  expect(homeCitedCheckinLink(todayAt, 0, now)).toBe('참고한 오늘 돌봄 1 보기 →');
+  expect(homeCitedCheckinLink(earlierAt, 1, now)).toBe('참고한 2026년 9월 9일 돌봄 2 보기 →');
+  expect(homeCitedCheckinLink(undefined, 0, now)).toBe('참고한 돌봄 기록 1 보기 →');
+  expect(conversationCitedCheckinLink(todayAt, 0, now)).toBe('근거가 된 오늘 돌봄 기록 1 보기 →');
+  expect(conversationCitedCheckinLink(earlierAt, 0, now)).toBe('근거가 된 2026년 9월 9일 돌봄 기록 1 보기 →');
+  expect(conversationCitedCheckinLink(undefined, 0, now)).toBe('근거가 된 돌봄 기록 1 보기 →');
+  const savedAsToday = '질문과 맞는 저장 기록을 찾았어요. 오늘 돌봄에 “식사를 챙겼어요”라고 남겼어요. 오늘 돌봄이라고 메모했어요.';
+  expect(presentCareMention(savedAsToday, earlierAt, now)).toBe('질문과 맞는 저장 기록을 찾았어요. 2026년 9월 9일 돌봄에 “식사를 챙겼어요”라고 남겼어요. 오늘 돌봄이라고 메모했어요.');
+  const savedAsDated = savedAsToday.replace('오늘 돌봄에', '2026년 9월 10일 돌봄에');
+  expect(presentCareMention(savedAsDated, todayAt, now)).toBe(savedAsToday);
+  expect(presentCareMention(savedAsToday, undefined, now)).toBe(savedAsToday);
 });

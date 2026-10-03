@@ -112,13 +112,21 @@ describe('private demo memory', () => {
     const checkin: CompanionCheckin = { id: 'care-window', petId: 'cat-a', kind: 'NOTE', note: '창가에서 햇빛을 쬐었어요', occurredAt: '2026-09-02T08:00:00.000Z', version: 1, createdAt: '2026-09-02T08:00:00.000Z', updatedAt: '2026-09-02T08:00:00.000Z' };
     const otherCat: CompanionCheckin = { ...checkin, id: 'care-other', petId: 'cat-b' };
     const question = '창가에서 햇빛을 쬐었어요';
-    const matched = groundedDemoReply('cat-a', [toyObs], [newer], question, [checkin, otherCat]);
+    const now = new Date('2026-09-04T00:00:00Z');
+    const matched = groundedDemoReply('cat-a', [toyObs], [newer], question, [checkin, otherCat], now);
     expect(matched.citedCheckinIds).toEqual(['care-window']);
     expect(matched.citedObservationIds).toEqual([]);
     expect(matched.text).toContain('창가에서 햇빛을 쬐었어요');
+    expect(matched.text).toContain('2026년 9월 2일 돌봄에');
+    expect(matched.text).not.toContain('오늘 돌봄');
     expect(matched.text).not.toContain('장난감을 따라왔어요');
     expect(matched.text).not.toContain('가장 최근');
     expect(matched.text).toContain('실제 AI 분석이 아니에요');
+    const todayCare: CompanionCheckin = { ...checkin, id: 'care-today', occurredAt: '2026-09-03T16:00:00.000Z', createdAt: '2026-09-03T16:00:00.000Z', updatedAt: '2026-09-03T16:00:00.000Z' };
+    const todayReply = groundedDemoReply('cat-a', [], [], question, [todayCare], now);
+    expect(todayReply.citedCheckinIds).toEqual(['care-today']);
+    expect(todayReply.text).toContain('오늘 돌봄에');
+    expect(todayReply.text).not.toContain('2026년 9월');
     expect(matched.text).not.toMatch(/알아들었어요|이해했어요|말을 했어요/);
     const latestOnly = groundedDemoReply('cat-a', [toyObs], [newer], '오늘 어땠나요', [checkin]);
     expect(latestOnly.citedObservationIds).toEqual(['toy']);
@@ -130,6 +138,8 @@ describe('private demo memory', () => {
     expect(saved.citedCheckinIds).toEqual(['care-window']);
     expect(saved.citedObservationIds).toEqual([]);
     expect(saved.answer).toContain('창가에서 햇빛을 쬐었어요');
+    expect(saved.answer).toContain('2026년 9월 2일 돌봄에');
+    expect(saved.answer).not.toContain('오늘 돌봄');
     const raw = jest.mocked(writeDemo).mock.calls[calls][0] as string;
     jest.mocked(readDemo).mockResolvedValueOnce(raw);
     clearDemoMemory();
@@ -140,5 +150,17 @@ describe('private demo memory', () => {
     expect(thread?.citedObservationIds).toEqual([]);
     expect(thread?.answer).toBe(saved.answer);
     expect(loaded.checkins.filter(item => item.petId === 'cat-b').map(item => item.id)).toEqual(['care-other']);
+  });
+
+  it('keeps a same-day check-in as today care using the save clock', async () => {
+    const now = new Date('2026-09-04T00:00:00Z');
+    const todayCare: CompanionCheckin = { id: 'care-today', petId: 'cat-a', kind: 'NOTE', note: '창가에서 햇빛을 쬐었어요', occurredAt: '2026-09-03T16:00:00.000Z', version: 1, createdAt: '2026-09-03T16:00:00.000Z', updatedAt: '2026-09-03T16:00:00.000Z' };
+    await changeDemo(data => { data.checkins = [todayCare]; data.conversations = []; data.observations = []; data.feedback = []; });
+    const saved = await saveDemoConversation('cat-a', '창가에서 햇빛을 쬐었어요', 'thread-today', now);
+    expect(saved.citedCheckinIds).toEqual(['care-today']);
+    expect(saved.answer).toContain('오늘 돌봄에');
+    expect(saved.answer).not.toContain('2026년 9월');
+    expect(saved.answer).toContain('실제 AI 분석이 아니에요');
+    expect(saved.answer).toContain('고양이의 말을 번역한 것도 아니에요');
   });
 });

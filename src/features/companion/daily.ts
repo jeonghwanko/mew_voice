@@ -21,6 +21,50 @@ export function kstDayStartMs(now = new Date()) {
   return new Date(`${dayKey(now)}T00:00:00+09:00`).getTime();
 }
 export function isToday(value: string, now = new Date()) { return dayKey(value) === dayKey(now); }
+
+/** Same Korean calendar date as the weekly summary (`formatDayKey`). */
+export function formatDiaryDay(key: string) {
+  const [year, month, day] = key.split('-');
+  if (!year || !month || !day) return '';
+  return `${year}년 ${Number(month)}월 ${Number(day)}일`;
+}
+
+/**
+ * Name one cited care record by the KST day it happened.
+ * Today stays "오늘 돌봄". Any other readable day uses that diary date, never "오늘".
+ * A missing or unreadable time stays "돌봄 기록" so the caregiver is not told it was today.
+ */
+export function citedCareName(occurredAt: string | null | undefined, now = new Date()) {
+  const key = occurredAt ? dayKey(occurredAt) : '';
+  if (!key) return '돌봄 기록';
+  if (key === dayKey(now)) return '오늘 돌봄';
+  const diary = formatDiaryDay(key);
+  return diary ? `${diary} 돌봄` : '돌봄 기록';
+}
+
+/** First care label only, so a caregiver's own note that repeats the words is left alone. */
+export function presentCareMention(text: string | null | undefined, occurredAt: string | null | undefined, now = new Date()) {
+  if (!text || !occurredAt) return text ?? null;
+  const key = dayKey(occurredAt);
+  if (!key) return text;
+  const dated = formatDiaryDay(key);
+  if (!dated) return text;
+  const live = key === dayKey(now) ? '오늘 돌봄' : `${dated} 돌봄`;
+  const stale = live === '오늘 돌봄' ? `${dated} 돌봄` : '오늘 돌봄';
+  const at = text.indexOf(stale);
+  if (at < 0) return text;
+  return text.slice(0, at) + live + text.slice(at + stale.length);
+}
+
+export function homeCitedCheckinLink(occurredAt: string | null | undefined, index: number, now = new Date()) {
+  return `참고한 ${citedCareName(occurredAt, now)} ${index + 1} 보기 →`;
+}
+
+export function conversationCitedCheckinLink(occurredAt: string | null | undefined, index: number, now = new Date()) {
+  const name = citedCareName(occurredAt, now);
+  const record = name.endsWith('기록') ? name : `${name} 기록`;
+  return `근거가 된 ${record} ${index + 1} 보기 →`;
+}
 export function recentRecordedDays(values: string[], now = new Date()) {
   const start = new Date(dayKey(now) + 'T00:00:00+09:00').getTime() - 6 * 86400000;
   return new Set(values.filter(value => new Date(value).getTime() >= start && new Date(value) <= now).map(dayKey)).size;

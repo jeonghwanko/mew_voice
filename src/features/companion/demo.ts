@@ -1,6 +1,6 @@
 import type { CompanionCheckin, CompanionConversation, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedback, CompanionInference } from '@findthem/shared';
 import { readDemo, writeDemo } from '../../core/storage';
-import { checkinLabels } from './daily';
+import { checkinLabels, citedCareName } from './daily';
 
 export type FeedbackRecord = CompanionFeedback;
 export type ChatReply = { id: string; text: string; citedObservationIds: string[]; citedCheckinIds: string[] };
@@ -118,21 +118,22 @@ function checkinQuote(item: CompanionCheckin) {
   if (note && note !== label) return `“${label}”라고 골랐고, “${note}”라고 적었어요`;
   return `“${label}”라고 남겼어요`;
 }
-function demoReplyText(citation: DemoCitation | undefined, matched: boolean) {
+function demoReplyText(citation: DemoCitation | undefined, matched: boolean, now = new Date()) {
   if (!citation) return '아직 이 아이의 반응 기록이나 오늘 돌봄 기록이 없어요. 사진이나 울음 기록 뒤 해 본 행동과 이후 반응, 또는 오늘 돌봄을 남기면 여기서 다시 찾아볼 수 있어요.\n\n체험 모드에서는 AI가 답변하지 않아요.';
   if (citation.source === 'reaction') {
     const lead = matched ? '질문과 맞는 저장 기록을 찾았어요.' : '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요.';
     return `${lead} “${citation.feedback.action}” 이후 “${citation.feedback.reaction}”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`;
   }
   const lead = matched ? '질문과 맞는 저장 기록을 찾았어요.' : '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 돌봄 기록만 보여 드려요.';
-  return `${lead} 오늘 돌봄에 ${checkinQuote(citation.checkin)}. 한 번의 기록으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`;
+  const care = citedCareName(checkinTime(citation.checkin), now);
+  return `${lead} ${care}에 ${checkinQuote(citation.checkin)}. 한 번의 기록으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`;
 }
-export function groundedDemoReply(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question = '', checkins: CompanionCheckin[] = []): ChatReply {
+export function groundedDemoReply(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question = '', checkins: CompanionCheckin[] = [], now = new Date()): ChatReply {
   const chosen = selectDemoCitation(petId, observations, feedback, question, checkins);
   const citation = chosen?.citation;
   return {
     id: createId(),
-    text: demoReplyText(citation, chosen?.matched ?? false),
+    text: demoReplyText(citation, chosen?.matched ?? false, now),
     citedObservationIds: citation?.source === 'reaction' ? [citation.observationId] : [],
     citedCheckinIds: citation?.source === 'checkin' ? [citation.checkin.id] : [],
   };
@@ -146,7 +147,7 @@ export function saveDemoConversation(petId: string, question: string, id: string
   return changeDemo(data => {
     const existing = data.conversations.find(item => item.id === id);
     if (existing) { if (existing.petId !== petId || existing.question !== text) throw new Error('IDEMPOTENCY_CONFLICT'); return existing; }
-    const reply = groundedDemoReply(petId, data.observations, data.feedback, text, data.checkins);
+    const reply = groundedDemoReply(petId, data.observations, data.feedback, text, data.checkins, now);
     const createdAt = now.toISOString();
     const conversation: CompanionConversation = { id, petId, question: text, answer: reply.text, status: 'COMPLETED', citedObservationIds: reply.citedObservationIds, citedCheckinIds: reply.citedCheckinIds, createdAt, completedAt: createdAt };
     data.conversations.push(conversation);
