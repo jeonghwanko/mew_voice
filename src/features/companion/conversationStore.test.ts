@@ -1,11 +1,13 @@
 import type { CompanionCheckin, CompanionConversation, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, type FeedbackRecord } from './demo';
-import { conversationOpenPet, deleteDemoConversation, findDemoConversation, moveDemoConversation, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
-import { dayKey } from './daily';
+import { conversationOpenPet, deleteDemoConversation, findDemoConversation, moveDemoConversation, retargetDemoConversationCheckin, retargetDemoConversationObservation, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
+import { citedCareGoneText, citedCaresForAnswer, citedReactionFromFeedback, citedReactionGoneText, citedReactionsForAnswer, dayKey, presentConversationAnswer, resolveCitedReactionMap, type CitedCareRecord } from './daily';
 import { diaryConversationRows } from './diaryTimeline';
 import { homeConversationThread } from './homeConversation';
 import { summarizeWeek } from './weeklySummary';
 import { errorMessage } from '../../lib/api';
+import { deleteDemoCheckin } from './checkinStore';
+import { deleteDemoObservation } from './observationStore';
 
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 
@@ -267,4 +269,164 @@ it('rejects an empty or future conversation time and does not invent an account 
   expect(errorMessage(new Error('INVALID_CONVERSATION_TIME'))).toBe('대화 시각을 확인해 주세요.');
   expect(errorMessage(new Error('CONVERSATION_TIME_FUTURE'))).toBe('미래 시각은 기록할 수 없어요. 이전 시각을 그대로 두었어요.');
   expect(errorMessage(new Error('CONVERSATION_TIME_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
+});
+
+it('points one cited observation at another saved observation and leaves the other citations', async () => {
+  const answer = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. “지켜봤어요” 이후 “그대로였어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const kept = turn('thread-keep', 'demo-momo', '나중에 남긴 질문', '2026-09-03T00:00:00Z');
+  const edited = turn('thread-wrong', 'demo-momo', '잘못 가리킨 질문', '2026-09-02T00:00:00Z');
+  edited.answer = answer;
+  edited.citedObservationIds = ['obs-1', 'obs-3'];
+  edited.citedCheckinIds = ['care-1', 'care-2'];
+  const other = turn('thread-other', 'demo-nabi', '다른 아이 질문', '2026-09-02T12:00:00Z');
+  const inference = { id: 'inf-1', observationId: 'obs-prior', status: 'ABSTAINED' as const, utterance: null, confidence: 'low' as const, reason: '체험 모드에서는 AI를 호출하지 않아요.', observation: ['보호자가 사진과 상황을 입력했어요.'], possibilities: [], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.'], suggestedAction: null, citedObservationIds: ['obs-1'], createdAt: '2026-09-01T00:00:00Z' };
+  const care2 = { ...checkin(), id: 'care-2', kind: 'MEAL' as const, note: '간식', occurredAt: '2026-09-01T00:00:00Z' };
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [observation('obs-1'), observation('obs-2', 'demo-nabi'), observation('obs-3'), { ...observation('obs-prior'), inference }];
+    data.feedback = [reaction('on-1', 'obs-1'), { ...reaction('on-2', 'obs-2'), action: '밥을 줬어요', reaction: '먹었어요' }, { ...reaction('on-3', 'obs-3'), action: '지켜봤어요', reaction: '그대로였어요' }];
+    data.checkins = [checkin(), care2];
+    data.conversations = [kept, edited, other];
+  });
+  const before = await getDemo();
+  const result = await retargetDemoConversationObservation('thread-wrong', 0, '  obs-2  ');
+  const state = await getDemo();
+  const stored = await findDemoConversation('thread-wrong');
+  expect(result.citedObservationIds).toEqual(['obs-2', 'obs-3']);
+  expect(stored).toEqual(result);
+  expect(stored?.id).toBe('thread-wrong');
+  expect(stored?.question).toBe('잘못 가리킨 질문');
+  expect(stored?.answer).toBe(answer);
+  expect(stored?.citedCheckinIds).toEqual(['care-1', 'care-2']);
+  expect(stored?.petId).toBe('demo-momo');
+  expect(state.conversations).toHaveLength(before.conversations.length);
+  expect(state.conversations.map(item => item.id)).toEqual(['thread-keep', 'thread-wrong', 'thread-other']);
+  expect(state.conversations.find(item => item.id === 'thread-keep')).toEqual(kept);
+  expect(state.conversations.find(item => item.id === 'thread-other')).toEqual(other);
+  expect(state.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2', 'obs-3', 'obs-prior']);
+  expect(state.observations.find(item => item.id === 'obs-prior')?.inference?.citedObservationIds).toEqual(['obs-1']);
+  expect(state.feedback.map(item => item.id)).toEqual(['on-1', 'on-2', 'on-3']);
+  expect(state.checkins.map(item => item.id)).toEqual(['care-1', 'care-2']);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  const moments = new Map([
+    ['obs-2', citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-2'))!],
+    ['obs-3', citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-3'))!],
+  ]);
+  const shown = presentConversationAnswer(stored?.answer, undefined, citedReactionsForAnswer(stored?.citedObservationIds, moments));
+  expect(shown).toContain('“밥을 줬어요” 이후 “먹었어요”라고 남겼어요');
+  expect(shown).toContain('“지켜봤어요” 이후 “그대로였어요”라고 남겼어요');
+  expect(shown).not.toContain('따라왔어요');
+  expect(shown).not.toContain(citedReactionGoneText);
+  await deleteDemoObservation('obs-2');
+  const afterDelete = await findDemoConversation('thread-wrong');
+  expect(afterDelete?.id).toBe('thread-wrong');
+  expect(afterDelete?.answer).toBe(answer);
+  expect(afterDelete?.citedObservationIds).toEqual(['obs-2', 'obs-3']);
+  expect(afterDelete?.citedCheckinIds).toEqual(['care-1', 'care-2']);
+  const remaining = (await getDemo()).feedback.filter(item => item.observationId === 'obs-3');
+  const goneMoments = resolveCitedReactionMap({
+    ids: afterDelete?.citedObservationIds ?? [],
+    known: new Map([['obs-3', citedReactionFromFeedback(remaining)!]]),
+    loadedIds: new Set(['obs-3']),
+    listComplete: true,
+    extra: [],
+  });
+  expect(goneMoments.get('obs-2')).toEqual({ status: 'gone' });
+  const missing = presentConversationAnswer(afterDelete?.answer, undefined, citedReactionsForAnswer(afterDelete?.citedObservationIds, goneMoments));
+  expect(missing).toContain(citedReactionGoneText);
+  expect(missing).toContain('“지켜봤어요” 이후 “그대로였어요”라고 남겼어요');
+  expect(missing).not.toContain('먹었어요');
+  expect((await getDemo()).observations.map(item => item.id)).toEqual(['obs-1', 'obs-3', 'obs-prior']);
+  expect((await getDemo()).conversations).toHaveLength(3);
+});
+
+it('points one cited check-in at another saved check-in and leaves the other citations', async () => {
+  const now = new Date('2026-09-10T00:30:00Z');
+  const answer = '질문과 맞는 저장 기록을 찾았어요. 오늘 돌봄에 “메모 남기기”라고 골랐고, “창가에서 햇빛을 쬐었어요”라고 적었어요. 2026년 9월 1일 돌봄에 “식사를 챙겼어요”라고 남겼어요. 한 번의 기록으로 이유를 확정할 수는 없어요.';
+  const edited = turn('thread-wrong', 'demo-momo', '잘못 가리킨 돌봄', '2026-09-02T00:00:00Z');
+  edited.answer = answer;
+  edited.citedObservationIds = ['obs-1', 'obs-2'];
+  edited.citedCheckinIds = ['care-1', 'care-1'];
+  const other = turn('thread-other', 'demo-momo', '다른 질문', '2026-09-03T00:00:00Z');
+  const care2 = { ...checkin(), id: 'care-2', kind: 'PLAY' as const, note: '창가를 떠났어요', occurredAt: '2026-09-09T14:59:59Z' };
+  const care3 = { ...checkin(), id: 'care-3', petId: 'demo-nabi', kind: 'NOTE' as const, note: '그대로예요', occurredAt: '2026-09-09T15:00:00Z' };
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [observation('obs-1'), observation('obs-2')];
+    data.feedback = [reaction('on-1', 'obs-1')];
+    data.checkins = [checkin(), care2, care3];
+    data.conversations = [edited, other];
+  });
+  const before = await getDemo();
+  const result = await retargetDemoConversationCheckin('thread-wrong', 1, ' care-2 ');
+  const stored = await findDemoConversation('thread-wrong');
+  const state = await getDemo();
+  expect(result.citedCheckinIds).toEqual(['care-1', 'care-2']);
+  expect(stored?.answer).toBe(answer);
+  expect(stored?.question).toBe('잘못 가리킨 돌봄');
+  expect(stored?.id).toBe('thread-wrong');
+  expect(stored?.citedObservationIds).toEqual(['obs-1', 'obs-2']);
+  expect(state.conversations).toHaveLength(before.conversations.length);
+  expect(state.conversations.find(item => item.id === 'thread-other')).toEqual(other);
+  expect(state.checkins.map(item => item.id)).toEqual(['care-1', 'care-2', 'care-3']);
+  expect(state.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2']);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  const moments = new Map<string, CitedCareRecord>([
+    ['care-1', { status: 'saved', occurredAt: '2026-09-02T00:00:00Z', kind: 'PLAY', note: '낚싯대로 놀았어요' }],
+    ['care-2', { status: 'saved', occurredAt: care2.occurredAt, kind: care2.kind, note: care2.note }],
+  ]);
+  const shown = presentConversationAnswer(stored?.answer, citedCaresForAnswer(stored?.citedCheckinIds, moments), undefined, now);
+  expect(shown).toContain('2026년 9월 2일 돌봄에 “놀아줬어요”라고 골랐고, “낚싯대로 놀았어요”라고 적었어요');
+  expect(shown).toContain('2026년 9월 9일 돌봄에 “놀아줬어요”라고 골랐고, “창가를 떠났어요”라고 적었어요');
+  expect(shown).not.toContain('식사를 챙겼어요');
+  await deleteDemoCheckin('care-2', 1);
+  const afterDelete = await findDemoConversation('thread-wrong');
+  expect(afterDelete?.citedCheckinIds).toEqual(['care-1', 'care-2']);
+  expect(afterDelete?.answer).toBe(answer);
+  expect(afterDelete?.citedObservationIds).toEqual(['obs-1', 'obs-2']);
+  const gone = new Map(moments);
+  gone.set('care-2', { status: 'gone' });
+  const missing = presentConversationAnswer(afterDelete?.answer, citedCaresForAnswer(afterDelete?.citedCheckinIds, gone), undefined, now);
+  expect(missing).toContain(citedCareGoneText);
+  expect(missing).toContain('낚싯대로 놀았어요');
+  expect(missing).not.toContain('창가를 떠났어요');
+  expect((await getDemo()).checkins.map(item => item.id)).toEqual(['care-1', 'care-3']);
+  expect((await getDemo()).conversations).toHaveLength(2);
+});
+
+it('refuses a citation that is not another saved record and does not invent an account update', async () => {
+  const saved = turn('thread-wrong', 'demo-momo', '잘못 가리킨 질문', '2026-09-02T00:00:00Z');
+  saved.answer = '저장된 답';
+  saved.citedObservationIds = ['obs-1', 'obs-1'];
+  saved.citedCheckinIds = ['care-1'];
+  await changeDemo(data => {
+    data.observations = [observation('obs-1'), observation('obs-2')];
+    data.checkins = [checkin()];
+    data.conversations = [saved];
+  });
+  await expect(retargetDemoConversationObservation('thread-wrong', 0, 'obs-1')).rejects.toThrow('INVALID_CONVERSATION_CITATION');
+  await expect(retargetDemoConversationObservation('thread-wrong', 0, '   ')).rejects.toThrow('INVALID_CONVERSATION_CITATION');
+  await expect(retargetDemoConversationObservation('thread-wrong', -1, 'obs-2')).rejects.toThrow('INVALID_CONVERSATION_CITATION');
+  await expect(retargetDemoConversationObservation('thread-wrong', 1.5, 'obs-2')).rejects.toThrow('INVALID_CONVERSATION_CITATION');
+  await expect(retargetDemoConversationObservation('thread-wrong', 2, 'obs-2')).rejects.toThrow('INVALID_CONVERSATION_CITATION');
+  await expect(retargetDemoConversationObservation('missing', 0, 'obs-2')).rejects.toThrow('NOT_FOUND');
+  await expect(retargetDemoConversationObservation('thread-wrong', 0, 'missing-obs')).rejects.toThrow('NOT_FOUND');
+  await expect(retargetDemoConversationCheckin('thread-wrong', 0, 'care-1')).rejects.toThrow('INVALID_CONVERSATION_CITATION');
+  await expect(retargetDemoConversationCheckin('thread-wrong', 0, 'missing-care')).rejects.toThrow('NOT_FOUND');
+  await expect(retargetDemoConversationCheckin('thread-wrong', 1, 'care-1')).rejects.toThrow('INVALID_CONVERSATION_CITATION');
+  const kept = await getDemo();
+  expect(kept.conversations).toHaveLength(1);
+  expect(kept.conversations[0]).toEqual(saved);
+  expect(kept.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2']);
+  expect(kept.checkins.map(item => item.id)).toEqual(['care-1']);
+  const moved = await retargetDemoConversationObservation('thread-wrong', 1, 'obs-2');
+  expect(moved.citedObservationIds).toEqual(['obs-1', 'obs-2']);
+  expect(moved.answer).toBe('저장된 답');
+  expect(moved.citedCheckinIds).toEqual(['care-1']);
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(retargetDemoConversationObservation('thread-wrong', 0, 'obs-2')).rejects.toThrow('CONSENT_REQUIRED');
+  await expect(retargetDemoConversationCheckin('thread-wrong', 0, 'care-1')).rejects.toThrow('CONSENT_REQUIRED');
+  expect(await findDemoConversation('thread-wrong')).toMatchObject({ id: 'thread-wrong', citedObservationIds: ['obs-1', 'obs-2'], citedCheckinIds: ['care-1'], answer: '저장된 답' });
+  expect(errorMessage(new Error('INVALID_CONVERSATION_CITATION'))).toBe('바꿀 인용을 확인해 주세요.');
+  expect(errorMessage(new Error('CONVERSATION_CITATION_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화의 인용은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });

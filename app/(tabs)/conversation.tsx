@@ -7,6 +7,8 @@ import { Body, Button, Card, Chip, Empty, ErrorNote, Field, Heading, Loading, Sc
 import { colors as c } from '../../src/ui/theme';
 import { newRequestId, useCompanion } from '../../src/features/companion/useCompanion';
 import { conversationOpenPet, findDemoConversation } from '../../src/features/companion/conversationStore';
+import { checkinChoiceLabel, choicesForPet, firstChoiceOnPet, hasOtherChoice, initialCitationChoice, observationChoiceLabel, petsWithOtherChoice, recentChoices, type CheckinChoice, type ObservationChoice } from '../../src/features/companion/citationChoices';
+import { getDemo } from '../../src/features/companion/demo';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { citedCaresForAnswer, citedReactionsForAnswer, conversationCitedCheckinLink, presentConversationAnswer } from '../../src/features/companion/daily';
 import { citedCheckinHref } from '../../src/features/companion/checkinNavigation';
@@ -36,6 +38,7 @@ export default function Conversation() {
   const [questionDraft, setQuestionDraft] = useState('');
   const [timeEditing, setTimeEditing] = useState(false);
   const [timeText, setTimeText] = useState('');
+  const [citationEdit, setCitationEdit] = useState<{ kind: 'observation' | 'checkin'; index: number; petId: string; targetId: string } | null>(null);
   const appliedConversation = useRef<string | null>(null);
   const alignedConversation = useRef<string | null>(null);
   const selectedPet = companion.activePet;
@@ -67,13 +70,23 @@ export default function Conversation() {
   }, [companion.demo, requestedConversationId, requestedPetId, pets.data, selectedPet?.id, selectPet]);
   useEffect(() => {
     appliedConversation.current = null;
-    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText('');
+    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setCitationEdit(null);
   }, [selectedPet?.id]);
 
   const history = useQuery({
     queryKey: [...companion.key, 'conversations', selectedPet?.id],
     enabled: !!selectedPet,
     queryFn: (): Promise<ConversationList> => loadSavedConversations(companion.demo, selectedPet!.id),
+  });
+  const citationCatalog = useQuery({
+    queryKey: [...companion.key, 'citation-catalog'],
+    enabled: companion.demo && !!selectedPet,
+    queryFn: async () => {
+      const stored = await getDemo();
+      const observations: ObservationChoice[] = stored.observations.map(item => ({ id: item.id, petId: item.petId, question: item.question, kind: item.kind, createdAt: item.createdAt }));
+      const checkins: CheckinChoice[] = stored.checkins.map(item => ({ id: item.id, petId: item.petId, kind: item.kind, note: item.note, occurredAt: item.occurredAt }));
+      return { observations, checkins };
+    },
   });
   const petId = selectedPet?.id;
   const refetchHistory = history.refetch;
@@ -121,7 +134,7 @@ export default function Conversation() {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))); return; }
     const choices = (companion.pets.data ?? []).filter(pet => pet.id !== current.petId);
     if (!choices.length) return;
-    setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(true); setMovePetId(choices[0].id); setError('');
+    setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setCitationEdit(null); setMovingPet(true); setMovePetId(choices[0].id); setError('');
   };
   const cancelMove = () => { setMovingPet(false); setMovePetId(''); setError(''); };
   const saveMove = async () => {
@@ -141,7 +154,7 @@ export default function Conversation() {
   const startQuestion = () => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_QUESTION_ACCOUNT_READONLY'))); return; }
-    setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setEditingQuestion(true); setQuestionDraft(current.question); setError('');
+    setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); setEditingQuestion(true); setQuestionDraft(current.question); setError('');
   };
   const cancelQuestion = () => { setEditingQuestion(false); setQuestionDraft(''); setError(''); };
   const saveQuestion = async () => {
@@ -160,7 +173,7 @@ export default function Conversation() {
   const startTime = () => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_TIME_ACCOUNT_READONLY'))); return; }
-    setEditingQuestion(false); setQuestionDraft(''); setMovingPet(false); setMovePetId(''); setTimeEditing(true); setTimeText(recordedTimeText(current.createdAt)); setError('');
+    setEditingQuestion(false); setQuestionDraft(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); setTimeEditing(true); setTimeText(recordedTimeText(current.createdAt)); setError('');
   };
   const cancelTime = () => { setTimeEditing(false); setTimeText(''); setError(''); };
   const saveTime = async () => {
@@ -176,6 +189,51 @@ export default function Conversation() {
       const updated = await companion.updateConversationTime(id, createdAt);
       setActive(prev => prev?.id === id ? updated : prev);
       setTimeEditing(false); setTimeText('');
+      await history.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+
+  const clearOtherEdits = () => { setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); };
+  const startCitation = (kind: 'observation' | 'checkin', index: number) => {
+    if (!current) return;
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_CITATION_ACCOUNT_READONLY'))); return; }
+    const records = kind === 'observation' ? citationCatalog.data?.observations : citationCatalog.data?.checkins;
+    const cited = kind === 'observation' ? current.citedObservationIds : (current.citedCheckinIds ?? []);
+    const currentId = cited[index];
+    if (!records || currentId == null || !companion.pets.data) return;
+    const picked = kind === 'observation'
+      ? initialCitationChoice(records as ObservationChoice[], currentId, companion.pets.data, item => item.createdAt)
+      : initialCitationChoice(records as CheckinChoice[], currentId, companion.pets.data, item => item.occurredAt);
+    if (!picked) return;
+    clearOtherEdits(); setCitationEdit({ kind, index, ...picked }); setError('');
+  };
+  const chooseCitationPet = (petId: string) => {
+    if (busy || !citationEdit || !current || !citationCatalog.data) return;
+    const cited = citationEdit.kind === 'observation' ? current.citedObservationIds : (current.citedCheckinIds ?? []);
+    const currentId = cited[citationEdit.index];
+    if (currentId == null) return;
+    const targetId = citationEdit.kind === 'observation'
+      ? firstChoiceOnPet(citationCatalog.data.observations, currentId, petId, item => item.createdAt)
+      : firstChoiceOnPet(citationCatalog.data.checkins, currentId, petId, item => item.occurredAt);
+    setCitationEdit({ ...citationEdit, petId, targetId });
+  };
+  const saveCitation = async () => {
+    if (!current || !citationEdit || !citationCatalog.data) return;
+    const cited = citationEdit.kind === 'observation' ? current.citedObservationIds : (current.citedCheckinIds ?? []);
+    const currentId = cited[citationEdit.index];
+    const choices = currentId == null ? [] : citationEdit.kind === 'observation'
+      ? choicesForPet(citationCatalog.data.observations, citationEdit.petId, currentId)
+      : choicesForPet(citationCatalog.data.checkins, citationEdit.petId, currentId);
+    if (!choices.some(item => item.id === citationEdit.targetId)) { setError(errorMessage(new Error('INVALID_CONVERSATION_CITATION'))); return; }
+    const id = current.id;
+    const edit = citationEdit;
+    setBusy(true); setError('');
+    try {
+      const updated = edit.kind === 'observation'
+        ? await companion.retargetConversationObservation(id, edit.index, edit.targetId)
+        : await companion.retargetConversationCheckin(id, edit.index, edit.targetId);
+      setActive(prev => prev?.id === id ? updated : prev);
+      setCitationEdit(null);
       await history.refetch();
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
@@ -216,10 +274,12 @@ export default function Conversation() {
       <ErrorNote message={error || (pending.error ? errorMessage(pending.error) : null)} />
       <Button title={companion.demo ? '기록에서 찾아보기' : '기록을 바탕으로 물어보기'} busy={busy} disabled={!message.trim()} icon="send-outline" onPress={() => void send()} />
       {current && <Card accent>{editingQuestion ? <><Body muted>질문 문장만 고쳐요. 같은 대화의 답변과 인용은 그대로 두어요. 답을 다시 만들지 않아요.</Body><Field label="궁금한 점" value={questionDraft} onChangeText={setQuestionDraft} placeholder="예: 오늘 창가에서 오래 울었던 이유가 궁금해" multiline maxLength={1500} editable={!busy} /><Button title="질문 저장" busy={busy} disabled={busy || !questionDraft.trim()} onPress={() => void saveQuestion()} /><Button title="질문 수정 취소" secondary disabled={busy} onPress={cancelQuestion} /></> : <><Text style={styles.question}>“{current.question}”</Text>{companion.demo ? <Button title="질문 수정" secondary disabled={busy} onPress={startQuestion} /> : <Body muted>이 계정에 남긴 대화의 질문은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}
-        {citations.map((id, index) => <Pressable key={id} accessibilityRole="link" onPress={() => current && router.push(citedObservationHref(id, current.id, selectedPet.id))}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
-        {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedCheckinHref(id, current.id, selectedPet.id))}><Text style={styles.link}>{conversationCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
+        {citations.map((id, index) => <Pressable key={`${index}-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedObservationHref(id, current.id, selectedPet.id))}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
+        {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${index}-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedCheckinHref(id, current.id, selectedPet.id))}><Text style={styles.link}>{conversationCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
         {companion.demo ? <Button title="이 대화 삭제" danger disabled={busy} onPress={removeThis} /> : <Body muted>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Body>}
       </Card>}
+      {current ? <ConversationCitationCard heading="어느 관찰을 가리키나요" note="이미 있는 다른 관찰로만 바꿉니다. 같은 대화의 질문과 답변 본문은 그대로 두고, 이 인용만 그 기록으로 바꿉니다. 다른 인용은 그대로 두어요. 답을 다시 만들지 않아요." saveTitle="이 관찰로 바꾸기" buttonTitle={index => `관찰 인용 ${index + 1}을 다른 기록으로 바꾸기`} demo={companion.demo} busy={busy} citations={current.citedObservationIds} records={citationCatalog.data?.observations} pets={companion.pets.data} editing={citationEdit?.kind === 'observation' ? citationEdit : null} label={observationChoiceLabel} time={item => item.createdAt} onStart={index => startCitation('observation', index)} onPet={chooseCitationPet} onTarget={id => { if (!busy && citationEdit) setCitationEdit({ ...citationEdit, targetId: id }); }} onSave={() => void saveCitation()} onCancel={() => { setCitationEdit(null); setError(''); }} /> : null}
+      {current ? <ConversationCitationCard heading="어느 돌봄을 가리키나요" note="이미 있는 다른 돌봄으로만 바꿉니다. 같은 대화의 질문과 답변 본문은 그대로 두고, 이 인용만 그 기록으로 바꿉니다. 다른 인용은 그대로 두어요. 답을 다시 만들지 않아요." saveTitle="이 돌봄으로 바꾸기" buttonTitle={index => `돌봄 인용 ${index + 1}을 다른 기록으로 바꾸기`} demo={companion.demo} busy={busy} citations={current.citedCheckinIds ?? []} records={citationCatalog.data?.checkins} pets={companion.pets.data} editing={citationEdit?.kind === 'checkin' ? citationEdit : null} label={checkinChoiceLabel} time={item => item.occurredAt} onStart={index => startCitation('checkin', index)} onPet={chooseCitationPet} onTarget={id => { if (!busy && citationEdit) setCitationEdit({ ...citationEdit, targetId: id }); }} onSave={() => void saveCitation()} onCancel={() => { setCitationEdit(null); setError(''); }} /> : null}
       {current ? <Card>
         <Heading>남긴 시각</Heading>
         {timeEditing ? <>
@@ -245,7 +305,7 @@ export default function Conversation() {
       </Card> : null}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
-      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => { setActive(item); if (item.id !== current?.id) { setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); } }} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {recordedTimeText(item.createdAt)}</Text></Pressable>; })}
+      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => { setActive(item); if (item.id !== current?.id) { setEditingQuestion(false); setQuestionDraft(''); setTimeEditing(false); setTimeText(''); setMovingPet(false); setMovePetId(''); setCitationEdit(null); } }} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {recordedTimeText(item.createdAt)}</Text></Pressable>; })}
       {!history.isLoading && !history.data?.items.length && (companion.demo
         ? <Empty title="아직 나눈 이야기가 없어요" detail="질문을 남기면 이 기기에만 기억돼요. 나갔다가 다시 들어와도 같은 질문과 답변을 읽을 수 있어요. 실제 AI 답변은 아니에요." />
         : <Empty title="아직 대화가 없어요" detail="첫 질문을 남기면 이곳에 기억돼요." />)}
@@ -254,3 +314,24 @@ export default function Conversation() {
 }
 
 const styles = StyleSheet.create({ prompt: { color: c.text, fontSize: 17, fontWeight: '600', lineHeight: 25 }, question: { color: c.primary, fontSize: 14, lineHeight: 22 }, link: { color: c.mint, fontWeight: '600', marginTop: 5 }, history: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: c.border, gap: 5 }, historyQuestion: { color: c.text, fontSize: 15, fontWeight: '600' }, historyAnswer: { color: c.muted, fontSize: 13, lineHeight: 20 }, historyMeta: { color: c.muted, fontSize: 12 } });
+
+function ConversationCitationCard<T extends { id: string; petId: string }>({ heading, note, saveTitle, buttonTitle, demo, busy, citations, records, pets, editing, label, time, onStart, onPet, onTarget, onSave, onCancel }: { heading: string; note: string; saveTitle: string; buttonTitle: (index: number) => string; demo: boolean; busy: boolean; citations: readonly string[]; records: readonly T[] | undefined; pets: readonly { id: string; name: string }[] | undefined; editing: { index: number; petId: string; targetId: string } | null; label: (item: T, peers: readonly T[]) => string; time: (item: T) => string; onStart: (index: number) => void; onPet: (petId: string) => void; onTarget: (id: string) => void; onSave: () => void; onCancel: () => void }) {
+  if (!citations.length) return null;
+  if (!demo) return <Card><Heading>{heading}</Heading><Body muted>{note}</Body><Body muted>이 계정에 남긴 대화의 인용은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body></Card>;
+  const offered = citations.map((id, index) => ({ id, index })).filter(item => hasOtherChoice(records, item.id));
+  if (!records || !pets || !offered.length) return null;
+  const active = editing && offered.some(item => item.index === editing.index) ? editing : null;
+  const currentId = active ? citations[active.index] : '';
+  const petChoices = active && currentId != null ? petsWithOtherChoice(records, currentId, pets) : [];
+  const recordChoices = active && currentId != null ? recentChoices(choicesForPet(records, active.petId, currentId), time) : [];
+  return <Card>
+    <Heading>{heading}</Heading>
+    <Body muted>{note}</Body>
+    {active ? <>
+      <View style={s.row}>{petChoices.map(pet => <Chip key={pet.id} label={pet.name} selected={active.petId === pet.id} onPress={() => { if (!busy) onPet(pet.id); }} />)}</View>
+      <View style={s.row}>{recordChoices.map(record => <Chip key={record.id} label={label(record, recordChoices)} selected={active.targetId === record.id} onPress={() => { if (!busy) onTarget(record.id); }} />)}</View>
+      <Button title={saveTitle} busy={busy} disabled={busy || !recordChoices.some(record => record.id === active.targetId)} onPress={onSave} />
+      <Button title="바꾸기 취소" secondary disabled={busy} onPress={onCancel} />
+    </> : offered.map(item => <Button key={item.index} title={buttonTitle(item.index)} secondary disabled={busy} onPress={() => onStart(item.index)} />)}
+  </Card>;
+}

@@ -110,3 +110,50 @@ export async function moveDemoConversation(id: string, petId: string): Promise<C
     return updated;
   });
 }
+
+/**
+ * Point one cited observation at another observation that is already saved.
+ * Only that index changes. The conversation id, question, answer text, and the other citations stay.
+ * This does not create a conversation, observation, check-in, or cat, and it does not rewrite the answer.
+ */
+export async function retargetDemoConversationObservation(id: string, index: number, observationId: string): Promise<CompanionConversation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    const indexInList = data.conversations.findIndex(item => item.id === id);
+    if (indexInList < 0) throw new Error('NOT_FOUND');
+    const current = data.conversations[indexInList];
+    const nextIds = replaceCitation(current.citedObservationIds, index, observationId);
+    const targetId = nextIds[index];
+    if (!data.observations.some(item => item.id === targetId)) throw new Error('NOT_FOUND');
+    const updated: CompanionConversation = { ...current, citedObservationIds: nextIds };
+    data.conversations[indexInList] = updated;
+    return updated;
+  });
+}
+
+/**
+ * Point one cited care check-in at another check-in that is already saved.
+ * Only that index changes. The conversation id, question, answer text, and the other citations stay.
+ * This does not create a conversation, observation, check-in, or cat, and it does not rewrite the answer.
+ */
+export async function retargetDemoConversationCheckin(id: string, index: number, checkinId: string): Promise<CompanionConversation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    const indexInList = data.conversations.findIndex(item => item.id === id);
+    if (indexInList < 0) throw new Error('NOT_FOUND');
+    const current = data.conversations[indexInList];
+    const nextIds = replaceCitation(current.citedCheckinIds ?? [], index, checkinId);
+    const targetId = nextIds[index];
+    if (!data.checkins.some(item => item.id === targetId)) throw new Error('NOT_FOUND');
+    const updated: CompanionConversation = { ...current, citedCheckinIds: nextIds };
+    data.conversations[indexInList] = updated;
+    return updated;
+  });
+}
+
+function replaceCitation(ids: readonly string[], index: number, targetId: string) {
+  if (!Number.isInteger(index) || index < 0 || index >= ids.length) throw new Error('INVALID_CONVERSATION_CITATION');
+  const nextId = typeof targetId === 'string' ? targetId.trim() : '';
+  if (!nextId || nextId === ids[index]) throw new Error('INVALID_CONVERSATION_CITATION');
+  return ids.map((id, at) => at === index ? nextId : id);
+}

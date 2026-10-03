@@ -63,6 +63,8 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'CONVERSATION_TIME_ACCOUNT_READONLY') return '이 계정에 남긴 대화 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_CONVERSATION_PET') return '옮길 아이를 확인해 주세요.';
   if (error instanceof Error && error.message === 'CONVERSATION_PET_ACCOUNT_READONLY') return '이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
+  if (error instanceof Error && error.message === 'INVALID_CONVERSATION_CITATION') return '바꿀 인용을 확인해 주세요.';
+  if (error instanceof Error && error.message === 'CONVERSATION_CITATION_ACCOUNT_READONLY') return '이 계정에 남긴 대화의 인용은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'IDEMPOTENCY_CONFLICT') return '저장 여부를 기록 목록에서 확인한 뒤 새 기록으로 작성해 주세요.';
   if (error instanceof Error && error.message === 'EDIT_CONFLICT') return '기록이 변경되었어요. 최신 기록을 다시 불러와 주세요.';
   if (error instanceof Error && error.message === 'NOT_FOUND') return '기록을 찾을 수 없어요.';
