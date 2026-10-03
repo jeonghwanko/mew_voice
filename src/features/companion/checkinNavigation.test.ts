@@ -1,4 +1,4 @@
-import { checkinContinueHref, checkinExitHref, checkinUnavailableHref, citedCheckinHref, diaryCheckinHref, diaryNewCheckinHref, diaryPetTarget } from './checkinNavigation';
+import { checkinContinueHref, checkinExitHref, checkinUnavailableHref, citedCheckinHref, diaryCheckinHref, diaryNewCheckinHref, diaryPetTarget, homeCheckinHref } from './checkinNavigation';
 
 it('returns to the saved conversation after a cited check-in, and home otherwise', () => {
   expect(citedCheckinHref('care-1', 'thread-1', 'demo-momo')).toBe('/checkin?id=care-1&returnTo=conversation&conversationId=thread-1&petId=demo-momo');
@@ -53,10 +53,25 @@ it('returns to the opening question when a cited check-in is missing or belongs 
   expect(checkinUnavailableHref({ returnTo: 'conversation', conversationId: 'thread 1', petId: 'pet 1' })).toBe('/(tabs)/conversation?conversationId=thread%201&petId=pet%201');
   expect(checkinUnavailableHref({})).toBe('/history');
   expect(checkinUnavailableHref({ returnTo: 'history', conversationId: 'thread-1', petId: 'demo-momo' })).toBe('/history');
-  expect(checkinUnavailableHref({ returnTo: 'home' })).toBe('/history');
-  expect(checkinUnavailableHref({ returnTo: 'home', conversationId: '   ', petId: 'demo-momo' })).toBe('/history');
   expect(checkinUnavailableHref({ returnTo: 'conversation' })).toBe('/history');
   expect(checkinUnavailableHref({ returnTo: 'conversation', conversationId: '   ' })).toBe('/history');
+});
+
+it('returns home when a check-in opened from the home care card is missing or belongs to another pet', () => {
+  expect(homeCheckinHref('care-1')).toBe('/checkin?id=care-1&returnTo=home');
+  expect(homeCheckinHref('care/1')).toBe('/checkin?id=care%2F1&returnTo=home');
+  expect(homeCheckinHref('   ')).toBe('/history');
+  expect(checkinUnavailableHref({ returnTo: 'home' })).toBe('/');
+  expect(checkinUnavailableHref({ returnTo: ['home'] })).toBe('/');
+  expect(checkinUnavailableHref({ returnTo: 'home', conversationId: '   ', petId: 'demo-momo' })).toBe('/');
+  expect(checkinUnavailableHref({ returnTo: ['home'], petId: ['demo-momo'] })).toBe('/');
+  expect(checkinUnavailableHref({ returnTo: 'home', conversationId: 'thread-1', petId: 'demo-momo' })).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(checkinUnavailableHref({ returnTo: 'diary', petId: 'demo-momo' })).toBe('/(tabs)/history?petId=demo-momo');
+  expect(checkinUnavailableHref({})).toBe('/history');
+  expect(checkinExitHref({ returnTo: 'home' })).toBe('/');
+  expect(checkinContinueHref({ returnTo: 'home' })).toBeNull();
+  expect(checkinExitHref({ returnTo: 'home', conversationId: 'thread-1', petId: 'demo-momo' })).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(checkinContinueHref({ returnTo: 'diary', petId: 'demo-momo' })).toBe('/(tabs)/history?petId=demo-momo');
 });
 
 it('returns to the same pet’s diary after a check-in opened from the diary', () => {

@@ -6,6 +6,7 @@ import { errorMessage } from '../../lib/api';
 import { dayKey, todayCareTruncationNote, todayCheckinSummary, todayCheckins } from '../companion/daily';
 import { useCheckins } from '../companion/useCheckins';
 import { loadTodayCheckins } from '../companion/weeklyPages';
+import { homeCheckinHref } from '../companion/checkinNavigation';
 import { studio as c } from './appearance';
 
 /** Today's care check-in for the selected cat, on the home surface. */
@@ -32,7 +33,7 @@ export function TodayCare() {
   const open = () => {
     if (!pet) { router.push('/pets/new'); return; }
     if (failed) { void walked.refetch(); return; }
-    if (today[0]) router.push(`/checkin?id=${today[0].id}`);
+    if (today[0]) router.push(homeCheckinHref(today[0].id));
     else router.push('/checkin');
   };
   const add = () => router.push(pet ? '/checkin' : '/pets/new');

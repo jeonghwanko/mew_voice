@@ -30,6 +30,17 @@ export function citedCheckinHref(checkinId: string, conversationId: string, petI
 }
 
 /**
+ * Existing check-in opened from the home “오늘의 돌봄” card.
+ * returnTo=home carries no conversation id, so the stored thread is not rewritten.
+ * A blank id stays on the record list.
+ */
+export function homeCheckinHref(checkinId: string) {
+  const id = checkinId.trim();
+  if (!id) return '/history';
+  return `/checkin?id=${encodeURIComponent(id)}&returnTo=home`;
+}
+
+/**
  * Check-in opened from one pet’s diary.
  * Without that pet, the plain edit route stays so history can still go home.
  * The stored thread is not rewritten.
@@ -90,9 +101,11 @@ export function checkinContinueHref(input: CheckinExitInput): Exclude<ReturnType
 /**
  * A cited check-in that cannot be loaded, or belongs to another pet.
  * The home chat or the conversation tab returns to that stored question.
- * A diary open returns to that same pet’s diary. Without that question, the record list stays.
+ * A home card open with no stored question returns home.
+ * A diary open returns to that same pet’s diary. History, with no stored question, stays on the record list.
  * The thread is not rewritten.
  */
-export function checkinUnavailableHref(input: CheckinExitInput): NonNullable<ReturnType<typeof checkinContinueHref>> | '/history' {
+export function checkinUnavailableHref(input: CheckinExitInput): NonNullable<ReturnType<typeof checkinExitHref>> | '/history' {
+  if (firstParam(input.returnTo) === 'home' && !firstParam(input.conversationId)) return '/';
   return checkinContinueHref(input) ?? '/history';
 }
