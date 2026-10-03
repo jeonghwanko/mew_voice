@@ -34,13 +34,16 @@ export function citedObservationHref(observationId: string, conversationId: stri
 /**
  * Earlier observation opened from “보호자가 남긴 반응 보기”.
  * Keeps the question id, pet, and return path already on this screen.
- * History, and an open without that id, stays on the plain observation route. The thread is not rewritten.
+ * A diary open keeps that same pet’s diary return. History, and an open without that id, stays on the plain observation route.
+ * The thread is not rewritten.
  */
 export function citedPriorObservationHref(observationId: string, input: ObservationExitInput) {
   const returnTo = firstParam(input.returnTo);
   const conversationId = firstParam(input.conversationId);
+  const petId = firstParam(input.petId);
+  if (returnTo === 'diary') return diaryObservationHref(observationId, petId);
   if ((returnTo === 'home' || returnTo === 'conversation') && conversationId) {
-    return citedObservationHref(observationId, conversationId, firstParam(input.petId), returnTo);
+    return citedObservationHref(observationId, conversationId, petId, returnTo);
   }
   return citedObservationHref(observationId, '');
 }

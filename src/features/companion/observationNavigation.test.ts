@@ -60,6 +60,13 @@ it('keeps the opening question when a caregiver reaction opens an earlier observ
   expect(citedPriorObservationHref('prior-1', { returnTo: 'conversation' })).toBe('/observations/prior-1');
   expect(citedPriorObservationHref('prior-1', { returnTo: 'conversation', conversationId: '   ' })).toBe('/observations/prior-1');
   expect(citedPriorObservationHref('   ', { returnTo: 'home', conversationId: 'thread-1', petId: 'demo-momo' })).toBe('/history');
+  expect(citedPriorObservationHref('prior-1', { returnTo: 'diary', petId: 'demo-momo' })).toBe('/observations/prior-1?returnTo=diary&petId=demo-momo');
+  expect(citedPriorObservationHref('prior-1', { returnTo: ['diary'], petId: ['demo-momo'] })).toBe('/observations/prior-1?returnTo=diary&petId=demo-momo');
+  expect(citedPriorObservationHref('prior/1', { returnTo: 'diary', petId: 'pet 1' })).toBe('/observations/prior%2F1?returnTo=diary&petId=pet%201');
+  expect(citedPriorObservationHref('prior-1', { returnTo: 'diary', petId: 'demo-momo', conversationId: 'thread-1' })).toBe('/observations/prior-1?returnTo=diary&petId=demo-momo');
+  expect(citedPriorObservationHref('prior-1', { returnTo: 'diary' })).toBe('/observations/prior-1');
+  expect(citedPriorObservationHref('prior-1', { returnTo: 'diary', petId: '   ' })).toBe('/observations/prior-1');
+  expect(citedPriorObservationHref('   ', { returnTo: 'diary', petId: 'demo-momo' })).toBe('/history');
 });
 
 it('returns to the same pet’s diary after an observation opened from the diary', () => {
