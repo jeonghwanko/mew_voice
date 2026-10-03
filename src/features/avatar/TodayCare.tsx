@@ -1,19 +1,27 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { MewIcon } from '../../ui/MewIcon';
 import { errorMessage } from '../../lib/api';
-import { todayCheckinSummary, todayCheckins } from '../companion/daily';
+import { dayKey, todayCheckinSummary, todayCheckins } from '../companion/daily';
 import { useCheckins } from '../companion/useCheckins';
+import { loadTodayCheckins } from '../companion/weeklyPages';
 import { studio as c } from './appearance';
 
 /** Today's care check-in for the selected cat, on the home surface. */
 export function TodayCare() {
   const checkins = useCheckins();
   const pet = checkins.activePet;
-  const today = todayCheckins(checkins.items, pet?.id);
+  const todayKey = dayKey(new Date());
+  const walked = useQuery({
+    queryKey: [...checkins.key, 'today-care', pet?.id, checkins.demo, todayKey],
+    enabled: !!pet,
+    queryFn: () => loadTodayCheckins(checkins.demo, pet!.id),
+  });
+  const today = todayCheckins(walked.data?.items ?? [], pet?.id);
   const summary = todayCheckinSummary(today);
-  const loading = !!pet && checkins.list.isLoading && checkins.items.length === 0;
-  const failed = !!pet && checkins.list.isError && today.length === 0;
+  const loading = !!pet && walked.isLoading && today.length === 0;
+  const failed = !!pet && walked.isError && today.length === 0;
   const line = !pet
     ? (checkins.pets.isLoading ? '함께할 아이를 확인하고 있어요' : '아이를 등록하면 오늘의 돌봄을 남길 수 있어요')
     : loading ? '오늘의 돌봄을 확인하고 있어요'
@@ -22,7 +30,7 @@ export function TodayCare() {
     : '오늘 아직 기록이 없어요';
   const open = () => {
     if (!pet) { router.push('/pets/new'); return; }
-    if (failed) { void checkins.list.refetch(); return; }
+    if (failed) { void walked.refetch(); return; }
     if (today[0]) router.push(`/checkin?id=${today[0].id}`);
     else router.push('/checkin');
   };
@@ -36,7 +44,7 @@ export function TodayCare() {
       <View style={styles.copy}>
         <Text style={styles.kicker}>오늘의 돌봄</Text>
         <Text style={styles.body} numberOfLines={2}>{line}</Text>
-        {failed ? <Text style={styles.hint}>{errorMessage(checkins.list.error)}</Text> : null}
+        {failed ? <Text style={styles.hint}>{errorMessage(walked.error)}</Text> : null}
       </View>
       {loading ? <ActivityIndicator color={c.accent} /> : null}
     </Pressable>

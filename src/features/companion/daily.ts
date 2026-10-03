@@ -16,6 +16,10 @@ export function dayKey(value: string | Date) {
   const date = new Date(original.getTime() + 9 * 3600000);
   return date.toISOString().slice(0, 10);
 }
+/** Midnight at the start of this KST calendar day. Same boundary as isToday. */
+export function kstDayStartMs(now = new Date()) {
+  return new Date(`${dayKey(now)}T00:00:00+09:00`).getTime();
+}
 export function isToday(value: string, now = new Date()) { return dayKey(value) === dayKey(now); }
 export function recentRecordedDays(values: string[], now = new Date()) {
   const start = new Date(dayKey(now) + 'T00:00:00+09:00').getTime() - 6 * 86400000;

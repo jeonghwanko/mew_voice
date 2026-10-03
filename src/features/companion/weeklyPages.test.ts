@@ -1,6 +1,10 @@
+import { api } from '../../lib/api';
+import { kstDayStartMs, todayCheckinSummary, todayCheckins } from './daily';
 import { checkinListPath, observationListPath, pageObservations } from './observationPages';
 import { summarizeWeek } from './weeklySummary';
-import { WEEKLY_PAGE_CAP, loadPagesForWeek } from './weeklyPages';
+import { WEEKLY_PAGE_CAP, loadPagesForWeek, loadTodayCheckins } from './weeklyPages';
+
+jest.mock('../../lib/api', () => ({ api: { get: jest.fn() } }));
 
 const now = new Date('2026-10-03T02:00:00Z');
 const observation = (id: string, createdAt: string) => ({ id, petId: 'cat-a', createdAt, contextTags: ['창가에서'], kind: 'PHOTO' as const, feedback: [] as { observationId: string }[] });
@@ -76,4 +80,62 @@ test('a page that crosses the weekly window is not followed', async () => {
   expect(loaded.truncated).toBe(false);
   expect(loaded.nextCursor).toBe('ancient');
   expect(loaded.items.map(item => item.id)).toEqual(['new', 'old']);
+});
+
+const care = (id: string, occurredAt: string, kind: 'PLAY' | 'MEAL' = 'PLAY') => ({ id, petId: 'cat-a', kind, note: null as string | null, occurredAt, version: 1, createdAt: occurredAt, updatedAt: occurredAt });
+
+test('today care follows check-in pages until a row is before today KST', async () => {
+  const todayNow = new Date('2026-10-03T02:00:00Z');
+  expect(kstDayStartMs(todayNow)).toBe(Date.parse('2026-10-02T15:00:00.000Z'));
+  const first = Array.from({ length: 50 }, (_, index) => care(`t-${index}`, '2026-10-03T01:00:00.000Z'));
+  jest.mocked(api.get).mockReset();
+  jest.mocked(api.get).mockImplementation(async (path: string) => {
+    if (!path.includes('cursor=')) return { items: first, nextCursor: 'page-2' };
+    if (path.includes('cursor=page-2')) return { items: [care('t-50', '2026-10-02T16:00:00.000Z', 'MEAL'), care('yesterday', '2026-10-02T14:59:59.000Z')], nextCursor: 'page-3' };
+    return { items: [care('ancient', '2026-01-01T00:00:00.000Z')], nextCursor: null };
+  });
+  const loaded = await loadTodayCheckins(false, 'cat-a', todayNow);
+  expect(jest.mocked(api.get).mock.calls.map(call => call[0])).toEqual([
+    checkinListPath('cat-a', null),
+    checkinListPath('cat-a', 'page-2'),
+  ]);
+  expect(loaded.truncated).toBe(false);
+  expect(loaded.nextCursor).toBe('page-3');
+  expect(loaded.items.map(item => item.id)).toContain('t-50');
+  expect(loaded.items.map(item => item.id)).not.toContain('ancient');
+  const today = todayCheckins(loaded.items, 'cat-a', todayNow);
+  expect(today.map(item => item.id)).toContain('t-50');
+  expect(today.map(item => item.id)).not.toContain('yesterday');
+  expect(todayCheckinSummary(todayCheckins(first, 'cat-a', todayNow))?.detail).not.toContain('식사를 챙겼어요');
+  expect(todayCheckinSummary(today)?.detail).toContain('식사를 챙겼어요');
+});
+
+test('a null check-in cursor does not add today rows past that page', async () => {
+  const todayNow = new Date('2026-10-03T02:00:00Z');
+  jest.mocked(api.get).mockReset();
+  jest.mocked(api.get).mockResolvedValue({ items: [care('only', '2026-10-03T01:00:00.000Z')], nextCursor: null });
+  const loaded = await loadTodayCheckins(false, 'cat-a', todayNow);
+  expect(api.get).toHaveBeenCalledTimes(1);
+  expect(loaded.items.map(item => item.id)).toEqual(['only']);
+  expect(loaded.nextCursor).toBeNull();
+  expect(loaded.truncated).toBe(false);
+});
+
+test('today care stops on a repeated cursor and at the diary page cap', async () => {
+  const todayNow = new Date('2026-10-03T02:00:00Z');
+  const boundary = kstDayStartMs(todayNow);
+  const repeated = jest.fn(async (cursor: string | null) => ({ items: [care(cursor ?? 'first', '2026-10-03T01:00:00.000Z')], nextCursor: 'stuck' }));
+  const stuck = await loadPagesForWeek(repeated, item => item.occurredAt, todayNow, WEEKLY_PAGE_CAP, boundary);
+  expect(repeated).toHaveBeenCalledTimes(2);
+  expect(stuck.truncated).toBe(true);
+  expect(stuck.nextCursor).toBeNull();
+  let n = 0;
+  const capped = await loadPagesForWeek(async () => {
+    const id = `id-${n}`;
+    n += 1;
+    return { items: [care(id, '2026-10-03T01:00:00.000Z')], nextCursor: `cursor-${n}` };
+  }, item => item.occurredAt, todayNow, WEEKLY_PAGE_CAP, boundary);
+  expect(capped.items).toHaveLength(WEEKLY_PAGE_CAP);
+  expect(capped.truncated).toBe(true);
+  expect(capped.nextCursor).toBe(`cursor-${WEEKLY_PAGE_CAP}`);
 });

@@ -1,6 +1,7 @@
 import type { CompanionCheckin, CompanionListResponse, CompanionObservation } from '@findthem/shared';
 import { api } from '../../lib/api';
 import { CONVERSATION_PAGE_CAP } from './conversationPages';
+import { kstDayStartMs } from './daily';
 import { getDemo } from './demo';
 import { checkinListPath, observationListPath, pageObservations } from './observationPages';
 import { weekWindow } from './weeklySummary';
@@ -14,9 +15,10 @@ export const WEEKLY_PAGE_CAP = CONVERSATION_PAGE_CAP;
 
 /**
  * Follow nextCursor the same way conversation pages do.
- * Stop when the 7-day window is covered, the cursor repeats, or WEEKLY_PAGE_CAP pages have been read.
+ * Stop when a newest-first page includes a row before boundaryMs, the cursor repeats, or the page cap is hit.
+ * boundaryMs defaults to the start of the 7-day KST window. Today's care passes the KST day start instead.
  * A null nextCursor is the end of that list: do not synthesize another page from the last id.
- * truncated is true only when the walk stops with the window still open (cap or a repeated cursor).
+ * truncated is true only when the walk stops with the boundary still open (cap or a repeated cursor).
  * The returned nextCursor is the first page not read, or null when the list ended or the cursor would repeat.
  */
 export type WeekPageLoad<T> = {
@@ -31,15 +33,15 @@ export async function loadPagesForWeek<T extends { id: string }>(
   timeOf: (item: T) => string,
   now = new Date(),
   cap = WEEKLY_PAGE_CAP,
+  boundaryMs = weekWindow(now).startMs,
 ): Promise<WeekPageLoad<T>> {
-  const startMs = weekWindow(now).startMs;
   const items: T[] = [];
   const seenIds = new Set<string>();
   const requested = new Set<string | null>();
   let cursor: string | null = null;
   const windowCovered = () => items.some(item => {
     const time = new Date(timeOf(item)).getTime();
-    return Number.isFinite(time) && time < startMs;
+    return Number.isFinite(time) && time < boundaryMs;
   });
   const stopped = (truncated: boolean, nextCursor: string | null): WeekPageLoad<T> => ({ items, truncated, nextCursor });
   for (let page = 0; page < cap; page += 1) {
@@ -103,4 +105,19 @@ export function loadObservationListPage(demo: boolean, petId: string, cursor: st
 /** One existing check-in page. Demo already returns the whole cat list with nextCursor null. */
 export function loadCheckinListPage(demo: boolean, petId: string, cursor: string | null) {
   return fetchCheckinPage(demo, petId, cursor);
+}
+
+/**
+ * Home today-care check-ins for one cat.
+ * Same cursor walk and page cap as the diary, but stop once a row is before today's KST boundary.
+ * A null nextCursor ends the list and does not add another page.
+ */
+export function loadTodayCheckins(demo: boolean, petId: string, now = new Date()) {
+  return loadPagesForWeek(
+    cursor => fetchCheckinPage(demo, petId, cursor),
+    item => item.occurredAt,
+    now,
+    WEEKLY_PAGE_CAP,
+    kstDayStartMs(now),
+  );
 }
