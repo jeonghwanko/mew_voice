@@ -1,3 +1,4 @@
+import { latestSavedFeedback } from './daily';
 import { changeDemo, type FeedbackRecord } from './demo';
 
 export type UpdateDemoFeedbackInput = { version: number; action: string; reaction: string; note?: string | null };
@@ -79,5 +80,48 @@ export async function deleteDemoFeedback(observationId: string, feedbackId: stri
     const current = data.feedback[index];
     if (feedbackVersion(current) !== version) throw new Error('EDIT_CONFLICT');
     data.feedback.splice(index, 1);
+  });
+}
+
+function retargetCitation(ids: readonly string[], from: string, to: string) {
+  return ids.map(id => id === from ? to : id);
+}
+
+/**
+ * Move one saved reaction onto another observation the caregiver already has.
+ * The same reaction id, action, reaction text, note, and time stay. Nothing is copied or inserted.
+ * The old observation no longer lists it. This does not create an observation or a cat.
+ * When this pair was the newest saved reaction on the old observation, conversations and
+ * inferences that cited that observation now cite the observation it belongs to.
+ * Stored answer text stays. The existing citation refresh reads the newest pair there.
+ */
+export async function moveDemoFeedback(observationId: string, feedbackId: string, targetObservationId: string, version: number): Promise<FeedbackRecord> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    if (typeof targetObservationId !== 'string' || !targetObservationId.trim()) throw new Error('INVALID_REACTION_OBSERVATION');
+    const targetId = targetObservationId.trim();
+    if (!data.observations.some(item => item.id === observationId)) throw new Error('NOT_FOUND');
+    if (!data.observations.some(item => item.id === targetId)) throw new Error('NOT_FOUND');
+    if (targetId === observationId) throw new Error('INVALID_REACTION_OBSERVATION');
+    const index = data.feedback.findIndex(item => item.id === feedbackId && item.observationId === observationId);
+    if (index < 0) throw new Error('NOT_FOUND');
+    const current = data.feedback[index];
+    if (feedbackVersion(current) !== version) throw new Error('EDIT_CONFLICT');
+    const sourceRows = data.feedback.filter(item => item.observationId === observationId);
+    const follow = latestSavedFeedback(sourceRows)?.id === feedbackId;
+    const updated: FeedbackRecord = { ...current, observationId: targetId, version: feedbackVersion(current) + 1 };
+    data.feedback[index] = updated;
+    if (follow) {
+      for (const conversation of data.conversations) {
+        if (!conversation.citedObservationIds.includes(observationId)) continue;
+        conversation.citedObservationIds = retargetCitation(conversation.citedObservationIds, observationId, targetId);
+      }
+      data.observations = data.observations.map(item => {
+        const inference = item.inference;
+        if (!inference?.citedObservationIds.includes(observationId)) return item;
+        return { ...item, inference: { ...inference, citedObservationIds: retargetCitation(inference.citedObservationIds, observationId, targetId) } };
+      });
+    }
+    return updated;
   });
 }

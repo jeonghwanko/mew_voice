@@ -42,6 +42,8 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'INVALID_REACTION_TIME') return '반응 시각을 확인해 주세요.';
   if (error instanceof Error && error.message === 'REACTION_TIME_FUTURE') return '미래 시각은 기록할 수 없어요. 이전 시각을 그대로 두었어요.';
   if (error instanceof Error && error.message === 'REACTION_TIME_ACCOUNT_READONLY') return '이 계정에 남긴 반응 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
+  if (error instanceof Error && error.message === 'INVALID_REACTION_OBSERVATION') return '옮길 관찰을 확인해 주세요.';
+  if (error instanceof Error && error.message === 'REACTION_OBSERVATION_ACCOUNT_READONLY') return '이 계정에 남긴 반응은 여기서 다른 관찰로 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'OBSERVATION_ACCOUNT_READONLY') return '이 계정에 남긴 관찰은 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.';
   if (error instanceof Error && error.message === 'OBSERVATION_CAPTION_ACCOUNT_READONLY') return '이 계정에 남긴 질문과 상황 태그는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_OBSERVATION_MEDIA') return '같은 종류의 사진·울음·영상만 바꿀 수 있어요.';

@@ -1,7 +1,7 @@
 import type { CompanionConversation, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, saveDemoConversation, type FeedbackRecord } from './demo';
-import { citedReactionFromFeedback, citedReactionGoneText, presentCitedReactionAnswer } from './daily';
-import { deleteDemoFeedback, feedbackVersion, updateDemoFeedback, updateDemoFeedbackTime } from './reactionStore';
+import { citedReactionFromFeedback, citedReactionGoneText, observationCitedReactions, presentCitedReactionAnswer } from './daily';
+import { deleteDemoFeedback, feedbackVersion, moveDemoFeedback, updateDemoFeedback, updateDemoFeedbackTime } from './reactionStore';
 import { summarizeWeek } from './weeklySummary';
 import { errorMessage } from '../../lib/api';
 
@@ -235,4 +235,137 @@ it('rejects an empty or future reaction time and does not invent an account upda
   expect(errorMessage(new Error('INVALID_REACTION_TIME'))).toBe('반응 시각을 확인해 주세요.');
   expect(errorMessage(new Error('REACTION_TIME_FUTURE'))).toBe('미래 시각은 기록할 수 없어요. 이전 시각을 그대로 두었어요.');
   expect(errorMessage(new Error('REACTION_TIME_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 반응 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
+});
+
+it('moves the latest reaction onto another observation and keeps the same id, text, and time', async () => {
+  const now = new Date('2026-10-03T02:00:00.000Z');
+  const saved = '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const otherAnswer = '질문과 맞는 저장 기록을 찾았어요. “밥을 줬어요” 이후 “먹었어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const inference = { id: 'inf-prior', observationId: 'obs-prior', status: 'ABSTAINED' as const, utterance: null, confidence: 'low' as const, reason: '체험 모드에서는 AI를 호출하지 않아요.', observation: ['보호자가 사진과 상황을 입력했어요.'], possibilities: [], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.'], suggestedAction: null, citedObservationIds: ['obs-1'], createdAt: '2026-10-02T00:00:00.000Z' };
+  const photo = { ...observation('obs-1'), localPhotoUri: 'file:///companion-photos/momo.jpg', question: '창가에서 왜 울까요?', contextTags: ['창가에서'], createdAt: '2026-10-02T01:00:00.000Z' };
+  const other = { ...observation('obs-2'), question: '식후에는 왜 그르릉거릴까요?', contextTags: ['휴식 중'], createdAt: '2026-10-02T03:00:00.000Z' };
+  const prior = { ...observation('obs-prior'), inference, question: '어제 창가', createdAt: '2026-10-02T04:00:00.000Z' };
+  await changeDemo(data => {
+    data.observations = [photo, other, prior];
+    data.feedback = [reaction('older', 'obs-1', '2026-09-01T00:00:00Z', '지켜봤어요', '그대로였어요'), reaction('latest', 'obs-1', '2026-09-02T00:00:00Z'), reaction('stay', 'obs-2', '2026-09-01T12:00:00Z', '물을 줬어요', '마셨어요')];
+    data.conversations = [
+      { id: 'thread-1', petId: 'demo-momo', question: '창가에서 왜 울까요?', answer: saved, status: 'COMPLETED', citedObservationIds: ['obs-1'], citedCheckinIds: [], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' },
+      { id: 'thread-other', petId: 'demo-momo', question: '밥', answer: otherAnswer, status: 'COMPLETED', citedObservationIds: ['obs-2'], citedCheckinIds: ['care-1'], createdAt: '2026-09-03T00:00:00Z', completedAt: '2026-09-03T00:00:00Z' },
+    ];
+  });
+  const before = summarizeWeek({ petId: 'demo-momo', now, demo: true, observations: [photo, other, prior], feedback: [reaction('older', 'obs-1', '2026-09-01T00:00:00Z', '지켜봤어요', '그대로였어요'), reaction('latest', 'obs-1', '2026-09-02T00:00:00Z'), reaction('stay', 'obs-2', '2026-09-01T12:00:00Z', '물을 줬어요', '마셨어요')], checkins: [] });
+  const updated = await moveDemoFeedback('obs-1', 'latest', '  obs-2  ', 1);
+  const state = await getDemo();
+  expect(updated).toMatchObject({ id: 'latest', observationId: 'obs-2', action: '놀아줬어요', reaction: '따라왔어요', note: '메모', happenedAt: '2026-09-02T00:00:00Z', createdAt: '2026-09-02T00:00:00Z', version: 2 });
+  expect(state.feedback.map(item => item.id)).toEqual(['older', 'latest', 'stay']);
+  expect(state.feedback.filter(item => item.observationId === 'obs-1').map(item => item.id)).toEqual(['older']);
+  expect(state.feedback.filter(item => item.observationId === 'obs-2').map(item => item.id)).toEqual(['latest', 'stay']);
+  expect(state.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2', 'obs-prior']);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo']);
+  expect(state.observations.find(item => item.id === 'obs-1')).toMatchObject({ petId: 'demo-momo', question: '창가에서 왜 울까요?', contextTags: ['창가에서'], localPhotoUri: 'file:///companion-photos/momo.jpg' });
+  expect(state.observations.find(item => item.id === 'obs-2')).toMatchObject({ question: '식후에는 왜 그르릉거릴까요?', contextTags: ['휴식 중'] });
+  expect(state.conversations.find(item => item.id === 'thread-1')).toMatchObject({ answer: saved, citedObservationIds: ['obs-2'], citedCheckinIds: [] });
+  expect(state.conversations.find(item => item.id === 'thread-other')).toMatchObject({ answer: otherAnswer, citedObservationIds: ['obs-2'], citedCheckinIds: ['care-1'] });
+  expect(state.observations.find(item => item.id === 'obs-prior')?.inference?.citedObservationIds).toEqual(['obs-2']);
+  const onTarget = citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-2'));
+  expect(onTarget).toEqual({ status: 'saved', action: '놀아줬어요', reaction: '따라왔어요' });
+  const shown = presentCitedReactionAnswer(saved, onTarget);
+  expect(shown).toContain('“놀아줬어요” 이후 “따라왔어요”라고 남겼어요');
+  expect(shown).not.toContain(citedReactionGoneText);
+  expect(onTarget?.status).toBe('saved');
+  if (onTarget) expect(observationCitedReactions(['obs-2'], new Map([['obs-2', onTarget]]))).toEqual([{ id: 'obs-2', line: '“놀아줬어요” 이후 “따라왔어요”라고 남겼어요', open: true }]);
+  const summary = summarizeWeek({ petId: 'demo-momo', now, demo: true, observations: state.observations, feedback: state.feedback, checkins: [] });
+  expect(summary.feedbackCount).toBe(before.feedbackCount);
+  expect(summary.observationCount).toBe(before.observationCount);
+  const again = await saveDemoConversation('demo-momo', '따라왔어요', 'thread-2', now);
+  expect(again.citedObservationIds).toEqual(['obs-2']);
+  expect(again.answer).toContain('“놀아줬어요” 이후 “따라왔어요”라고 남겼어요');
+  expect(again.answer).not.toContain(citedReactionGoneText);
+  expect((await getDemo()).conversations.find(item => item.id === 'thread-1')?.answer).toBe(saved);
+  expect((await getDemo()).feedback.filter(item => item.id === 'latest')).toHaveLength(1);
+});
+
+it('moves an earlier reaction onto another cat without copying it or dropping the later citation', async () => {
+  const now = new Date('2026-10-03T02:00:00.000Z');
+  const saved = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const inference = { id: 'inf-1', observationId: 'obs-1', status: 'ABSTAINED' as const, utterance: null, confidence: 'low' as const, reason: '체험 모드에서는 AI를 호출하지 않아요.', observation: ['보호자가 사진과 상황을 입력했어요.'], possibilities: [], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.'], suggestedAction: null, citedObservationIds: ['older-photo'], createdAt: '2026-09-01T00:00:00Z' };
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [
+      { ...observation('obs-1'), localAudioUri: 'file:///companion-audio/cry.m4a', inference, createdAt: '2026-10-02T01:00:00.000Z' },
+      { ...observation('obs-2'), petId: 'demo-nabi', localPhotoUri: 'file:///companion-photos/nabi.jpg', question: '나비는 왜 숨었을까요?', contextTags: ['숨었어요'], createdAt: '2026-10-02T02:00:00.000Z' },
+    ];
+    data.feedback = [reaction('older', 'obs-1', '2026-09-01T00:00:00Z', '지켜봤어요', '그대로였어요'), reaction('latest', 'obs-1', '2026-09-02T00:00:00Z'), reaction('nabi', 'obs-2', '2026-09-03T00:00:00Z', '밥을 줬어요', '먹었어요')];
+    data.conversations = [{ id: 'thread-1', petId: 'demo-momo', question: '창가', answer: saved, status: 'COMPLETED', citedObservationIds: ['obs-1'], citedCheckinIds: [], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' }];
+  });
+  const updated = await moveDemoFeedback('obs-1', 'older', 'obs-2', 1);
+  const state = await getDemo();
+  expect(updated).toMatchObject({ id: 'older', observationId: 'obs-2', action: '지켜봤어요', reaction: '그대로였어요', note: '메모', happenedAt: '2026-09-01T00:00:00Z', createdAt: '2026-09-01T00:00:00Z', version: 2 });
+  expect(state.feedback.map(item => item.id)).toEqual(['older', 'latest', 'nabi']);
+  expect(state.feedback.filter(item => item.observationId === 'obs-1').map(item => item.id)).toEqual(['latest']);
+  expect(state.feedback.filter(item => item.observationId === 'obs-2').map(item => item.id)).toEqual(['older', 'nabi']);
+  expect(state.observations).toHaveLength(2);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  expect(state.observations.find(item => item.id === 'obs-1')).toMatchObject({ petId: 'demo-momo', localAudioUri: 'file:///companion-audio/cry.m4a' });
+  expect(state.observations.find(item => item.id === 'obs-1')?.inference?.citedObservationIds).toEqual(['older-photo']);
+  expect(state.observations.find(item => item.id === 'obs-2')).toMatchObject({ petId: 'demo-nabi', localPhotoUri: 'file:///companion-photos/nabi.jpg', question: '나비는 왜 숨었을까요?' });
+  expect(state.conversations[0]).toMatchObject({ id: 'thread-1', answer: saved, citedObservationIds: ['obs-1'] });
+  const stayed = citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-1'));
+  expect(stayed).toEqual({ status: 'saved', action: '놀아줬어요', reaction: '따라왔어요' });
+  expect(presentCitedReactionAnswer(saved, stayed)).toContain('“놀아줬어요” 이후 “따라왔어요”라고 남겼어요');
+  expect(presentCitedReactionAnswer(saved, stayed)).not.toContain(citedReactionGoneText);
+  const onNabi = citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-2'));
+  expect(onNabi).toEqual({ status: 'saved', action: '밥을 줬어요', reaction: '먹었어요' });
+  const forNabi = await saveDemoConversation('demo-nabi', '그대로였어요', 'thread-nabi', now);
+  expect(forNabi.citedObservationIds).toEqual(['obs-2']);
+  expect(forNabi.answer).toContain('“지켜봤어요” 이후 “그대로였어요”라고 남겼어요');
+  expect(forNabi.answer).not.toContain(citedReactionGoneText);
+  const forMomo = await saveDemoConversation('demo-momo', '그대로였어요', 'thread-momo', now);
+  expect(forMomo.citedObservationIds).not.toContain('obs-2');
+  expect((await getDemo()).conversations.find(item => item.id === 'thread-1')?.answer).toBe(saved);
+  expect((await getDemo()).feedback.filter(item => item.id === 'older')).toHaveLength(1);
+});
+
+it('follows a moved reaction when the target already has a newer pair and does not say the citation is missing', async () => {
+  const saved = '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  await changeDemo(data => {
+    data.observations = [observation('obs-1'), observation('obs-2')];
+    data.feedback = [reaction('only', 'obs-1', '2026-09-01T00:00:00Z'), reaction('newer', 'obs-2', '2026-10-01T00:00:00Z', '창문을 열었어요', '다가왔어요')];
+    data.conversations = [{ id: 'thread-1', petId: 'demo-momo', question: '창가', answer: saved, status: 'COMPLETED', citedObservationIds: ['obs-1'], citedCheckinIds: [], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' }];
+  });
+  const updated = await moveDemoFeedback('obs-1', 'only', 'obs-2', 1);
+  const state = await getDemo();
+  expect(updated).toMatchObject({ id: 'only', observationId: 'obs-2', action: '놀아줬어요', reaction: '따라왔어요', happenedAt: '2026-09-01T00:00:00Z', createdAt: '2026-09-01T00:00:00Z', version: 2 });
+  expect(state.feedback.filter(item => item.observationId === 'obs-1')).toEqual([]);
+  expect(state.conversations[0].answer).toBe(saved);
+  expect(state.conversations[0].citedObservationIds).toEqual(['obs-2']);
+  const current = citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-2'));
+  expect(current).toEqual({ status: 'saved', action: '창문을 열었어요', reaction: '다가왔어요' });
+  const shown = presentCitedReactionAnswer(saved, current);
+  expect(shown).toContain('“창문을 열었어요” 이후 “다가왔어요”라고 남겼어요');
+  expect(shown).not.toContain(citedReactionGoneText);
+  expect(state.feedback.find(item => item.id === 'only')).toMatchObject({ action: '놀아줬어요', reaction: '따라왔어요' });
+});
+
+it('rejects a reaction move onto the same observation, a missing one, or without consent and does not invent a record', async () => {
+  await changeDemo(data => {
+    data.observations = [{ ...observation('obs-1'), localPhotoUri: 'file:///companion-photos/momo.jpg' }, observation('obs-2')];
+    data.feedback = [reaction('latest', 'obs-1', '2026-09-02T00:00:00Z'), reaction('other', 'obs-2', '2026-09-03T00:00:00Z', '밥을 줬어요', '먹었어요')];
+  });
+  await expect(moveDemoFeedback('obs-1', 'latest', 'obs-1', 1)).rejects.toThrow('INVALID_REACTION_OBSERVATION');
+  await expect(moveDemoFeedback('obs-1', 'latest', '   ', 1)).rejects.toThrow('INVALID_REACTION_OBSERVATION');
+  await expect(moveDemoFeedback('obs-1', 'latest', 'obs-made-up', 1)).rejects.toThrow('NOT_FOUND');
+  await expect(moveDemoFeedback('missing', 'latest', 'obs-2', 1)).rejects.toThrow('NOT_FOUND');
+  await expect(moveDemoFeedback('obs-2', 'latest', 'obs-1', 1)).rejects.toThrow('NOT_FOUND');
+  await expect(moveDemoFeedback('obs-1', 'latest', 'obs-2', 4)).rejects.toThrow('EDIT_CONFLICT');
+  const kept = await getDemo();
+  expect(kept.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2']);
+  expect(kept.pets.map(item => item.id)).toEqual(['demo-momo']);
+  expect(kept.feedback).toHaveLength(2);
+  expect(kept.feedback.find(item => item.id === 'latest')).toMatchObject({ observationId: 'obs-1', action: '놀아줬어요', reaction: '따라왔어요', happenedAt: '2026-09-02T00:00:00Z', createdAt: '2026-09-02T00:00:00Z' });
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(moveDemoFeedback('obs-1', 'latest', 'obs-2', 1)).rejects.toThrow('CONSENT_REQUIRED');
+  expect((await getDemo()).feedback.find(item => item.id === 'latest')?.observationId).toBe('obs-1');
+  expect(errorMessage(new Error('INVALID_REACTION_OBSERVATION'))).toBe('옮길 관찰을 확인해 주세요.');
+  expect(errorMessage(new Error('REACTION_OBSERVATION_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 반응은 여기서 다른 관찰로 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });

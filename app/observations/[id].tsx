@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { View, Image, Platform, Pressable, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Screen, Body, Heading, Button, Badge, Card, Field, Chip, ErrorNote, Loading, s } from '../../src/ui/components';
@@ -11,6 +12,7 @@ import { latestSavedFeedback, observationCitedReactions } from '../../src/featur
 import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
 import { citedPriorObservationHref, observationExitHref, observationLeaveHref } from '../../src/features/companion/observationNavigation';
 import { feedbackVersion } from '../../src/features/companion/reactionStore';
+import { getDemo } from '../../src/features/companion/demo';
 import { OBSERVATION_CONTEXT_TAGS } from '../../src/features/companion/observationStore';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
@@ -22,6 +24,17 @@ function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   }, [id, localUri]);
   return source ? <Image accessibilityLabel="이 관찰에 첨부한 사진" source={source} style={{ width: '100%', height: 230, borderRadius: 22, marginBottom: 18 }} /> : null;
 }
+type MoveObservation = { id: string; petId: string; question: string | null; kind: string; createdAt: string };
+function recentObservations<T extends { createdAt: string; id: string }>(items: readonly T[]) {
+  return [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+}
+function moveObservationLabel(item: MoveObservation, peers: readonly MoveObservation[]) {
+  const kind = item.kind === 'AUDIO' ? '울음' : item.kind === 'VIDEO' ? '영상' : '사진';
+  const name = item.question?.trim() || '질문 없는 관찰';
+  const base = `${kind} · ${name}`;
+  const duplicate = peers.filter(peer => peer.kind === item.kind && (peer.question?.trim() || '질문 없는 관찰') === name).length > 1;
+  return duplicate ? `${base} · ${displayDate(item.createdAt)}` : base;
+}
 const actions = ['놀아줬어요', '먹었어요', '쉬게 뒀어요', '지켜봤어요'];
 const reactions = ['편안해 보였어요', '계속했어요', '피했어요', '잘 모르겠어요'];
 function conflicted(cause: unknown) { return (cause instanceof ApiError && cause.status === 409) || (cause instanceof Error && cause.message === 'EDIT_CONFLICT'); }
@@ -31,13 +44,21 @@ function recordedTimeText(value: string) { const date = new Date(value); return 
 
 export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
-  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [timeEditing, setTimeEditing] = useState(false); const [timeText, setTimeText] = useState(''); const [reactionTime, setReactionTime] = useState<{ id: string; version: number } | null>(null); const [reactionTimeText, setReactionTimeText] = useState(''); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
+  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [timeEditing, setTimeEditing] = useState(false); const [timeText, setTimeText] = useState(''); const [reactionTime, setReactionTime] = useState<{ id: string; version: number } | null>(null); const [reactionTimeText, setReactionTimeText] = useState(''); const [movingReaction, setMovingReaction] = useState<{ id: string; version: number } | null>(null); const [reactionMovePetId, setReactionMovePetId] = useState(''); const [reactionMoveObservationId, setReactionMoveObservationId] = useState(''); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
+  const catalog = useQuery({
+    queryKey: [...companion.key, 'observation-catalog'],
+    enabled: companion.demo,
+    queryFn: async (): Promise<MoveObservation[]> => {
+      const stored = await getDemo();
+      return stored.observations.map(item => ({ id: item.id, petId: item.petId, question: item.question, kind: item.kind, createdAt: item.createdAt }));
+    },
+  });
   const data = observation.data; const inference = data?.inference;
   const reactionMoments = useCitedReactionMoments(inference?.citedObservationIds ?? []);
   const citedReactions = observationCitedReactions(inference?.citedObservationIds, reactionMoments);
   const latest = latestSavedFeedback(data?.feedback);
   const finish = async () => {
-    setEditing(null); setAction(''); setReaction(''); setNote(''); setConflict(false); setReactionTime(null); setReactionTimeText('');
+    setEditing(null); setAction(''); setReaction(''); setNote(''); setConflict(false); setReactionTime(null); setReactionTimeText(''); setMovingReaction(null); setReactionMovePetId(''); setReactionMoveObservationId('');
     const next = observationExitHref(params);
     if (next) router.replace(next); else await observation.refetch();
   };
@@ -55,6 +76,7 @@ export default function ObservationScreen() {
   const startEdit = (item: { id: string; action?: string | null; reaction?: string | null; note?: string | null }) => {
     if (!companion.demo) { setError(errorMessage(new Error('REACTION_ACCOUNT_READONLY'))); return; }
     setReactionTime(null); setReactionTimeText('');
+    setMovingReaction(null); setReactionMovePetId(''); setReactionMoveObservationId('');
     setEditing({ id: item.id, version: feedbackVersion(item) });
     setAction(item.action ?? ''); setReaction(item.reaction ?? ''); setNote(item.note ?? '');
     setError(''); setConflict(false);
@@ -64,6 +86,11 @@ export default function ObservationScreen() {
     setConflict(false);
     void observation.refetch().then(result => {
       setEditing(current => {
+        if (!current) return current;
+        const next = result.data?.feedback?.find(row => row.id === current.id);
+        return next ? { id: next.id, version: feedbackVersion(next) } : current;
+      });
+      setMovingReaction(current => {
         if (!current) return current;
         const next = result.data?.feedback?.find(row => row.id === current.id);
         return next ? { id: next.id, version: feedbackVersion(next) } : current;
@@ -117,6 +144,7 @@ export default function ObservationScreen() {
   const startReactionTime = (item: { id: string; happenedAt?: string | null; createdAt?: string | null }) => {
     if (!companion.demo) { setError(errorMessage(new Error('REACTION_TIME_ACCOUNT_READONLY'))); return; }
     setTimeEditing(false); setTimeText('');
+    setMovingReaction(null); setReactionMovePetId(''); setReactionMoveObservationId('');
     setReactionTime({ id: item.id, version: feedbackVersion(item) });
     setReactionTimeText(recordedTimeText(item.happenedAt || item.createdAt || ''));
     setError(''); setConflict(false);
@@ -135,6 +163,44 @@ export default function ObservationScreen() {
       setReactionTime(null); setReactionTimeText('');
       await observation.refetch();
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+  const reactionTargets = (catalog.data ?? []).filter(item => item.id !== id);
+  const reactionMovePets = (companion.pets.data ?? []).filter(pet => reactionTargets.some(item => item.petId === pet.id));
+  const reactionMoveRecords = recentObservations(reactionTargets.filter(item => item.petId === reactionMovePetId));
+  const startReactionMove = (item: { id: string }) => {
+    if (!companion.demo) { setError(errorMessage(new Error('REACTION_OBSERVATION_ACCOUNT_READONLY'))); return; }
+    const choices = (catalog.data ?? []).filter(row => row.id !== id);
+    if (!choices.length) return;
+    const pets = (companion.pets.data ?? []).filter(pet => choices.some(row => row.petId === pet.id));
+    const pet = pets[0];
+    if (!pet) return;
+    const first = recentObservations(choices.filter(row => row.petId === pet.id))[0];
+    setReactionTime(null); setReactionTimeText('');
+    setMovingReaction({ id: item.id, version: feedbackVersion(item) });
+    setReactionMovePetId(pet.id);
+    setReactionMoveObservationId(first?.id ?? '');
+    setError(''); setConflict(false);
+  };
+  const chooseReactionMovePet = (petId: string) => {
+    if (busy) return;
+    const first = recentObservations(reactionTargets.filter(row => row.petId === petId))[0];
+    setReactionMovePetId(petId);
+    setReactionMoveObservationId(first?.id ?? '');
+  };
+  const cancelReactionMove = () => { setMovingReaction(null); setReactionMovePetId(''); setReactionMoveObservationId(''); setError(''); };
+  const saveReactionMove = async () => {
+    if (!movingReaction) return;
+    if (!reactionMoveRecords.some(item => item.id === reactionMoveObservationId)) { setError(errorMessage(new Error('INVALID_REACTION_OBSERVATION'))); return; }
+    setBusy(true); setError(''); setConflict(false);
+    try {
+      await companion.moveFeedback(id, movingReaction.id, reactionMoveObservationId, movingReaction.version);
+      if (editing?.id === movingReaction.id) { setEditing(null); setAction(''); setReaction(''); setNote(''); }
+      setMovingReaction(null); setReactionMovePetId(''); setReactionMoveObservationId('');
+      await observation.refetch();
+    } catch (cause) {
+      if (conflicted(cause)) { setConflict(true); setError('다른 곳에서 이 반응이 수정되었어요. 최신 내용을 다시 불러온 뒤 옮길 수 있어요.'); }
+      else setError(errorMessage(cause));
+    } finally { setBusy(false); }
   };
   const removeThis = () => {
     if (!data) return;
@@ -235,7 +301,7 @@ export default function ObservationScreen() {
         {!!citedReactions.length && <><Heading>함께 참고한 이전 기록</Heading>{citedReactions.map(item => <View key={item.id}>{item.line ? <Body>{item.line}</Body> : null}{item.open ? <Button title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(item.id, params))} /> : null}</View>)}</>}
       </>}
       <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>{editing ? (editing.id === latest?.id ? '저장한 최근 반응을 고치고 있어요. 새 반응을 추가하지 않아요.' : '저장한 이전 반응을 고치고 있어요. 새 반응을 추가하지 않아요.') : '실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.'}</Body>
-      {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && <>{reactionTime?.id === item.id ? <><Body muted>이 반응의 시각만 고쳐요. 같은 반응 문장과 관찰의 사진·울음·영상, 질문, 상황 태그는 그대로 두어요. 새 반응을 만들지 않아요.</Body><Field label="반응 시각 · 한국 시간(KST)" placeholder="2026-09-10 19:20" value={reactionTimeText} onChangeText={setReactionTimeText} editable={!busy} /><ErrorNote message={error} /><Button title="시각 저장" busy={busy} disabled={busy || !reactionTimeText.trim()} onPress={() => void saveReactionTime()} /><Button title="시각 수정 취소" secondary disabled={busy} onPress={cancelReactionTime} /></> : <><Body>{recordedTimeText(item.happenedAt || item.createdAt)}</Body>{companion.demo ? <Button title="이 반응 시각 수정" secondary disabled={busy || reactionTime !== null} onPress={() => startReactionTime(item)} /> : <Body muted>이 계정에 남긴 반응 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}<Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={() => startEdit(item)} /><Button title="이 반응 삭제" danger disabled={busy} onPress={() => removeReaction(item)} /></>}</Card>)}
+      {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && <>{reactionTime?.id === item.id ? <><Body muted>이 반응의 시각만 고쳐요. 같은 반응 문장과 관찰의 사진·울음·영상, 질문, 상황 태그는 그대로 두어요. 새 반응을 만들지 않아요.</Body><Field label="반응 시각 · 한국 시간(KST)" placeholder="2026-09-10 19:20" value={reactionTimeText} onChangeText={setReactionTimeText} editable={!busy} /><ErrorNote message={error} /><Button title="시각 저장" busy={busy} disabled={busy || !reactionTimeText.trim()} onPress={() => void saveReactionTime()} /><Button title="시각 수정 취소" secondary disabled={busy} onPress={cancelReactionTime} /></> : <><Body>{recordedTimeText(item.happenedAt || item.createdAt)}</Body>{companion.demo ? <Button title="이 반응 시각 수정" secondary disabled={busy || reactionTime !== null} onPress={() => startReactionTime(item)} /> : <Body muted>이 계정에 남긴 반응 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}<Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={() => startEdit(item)} /><Button title="이 반응 삭제" danger disabled={busy} onPress={() => removeReaction(item)} /><Heading>어느 관찰의 반응인가요</Heading><Body muted>이미 있는 다른 관찰로만 옮겨요. 같은 반응 문장과 시각, 반응 번호는 그대로 두어요. 새 관찰이나 새 아이를 만들지 않고, AI로 분석하지 않아요.</Body>{companion.demo ? !catalog.data || !companion.pets.data ? null : reactionTargets.length === 0 ? <Body muted>옮길 다른 관찰이 없어서 옮길 수 없어요.</Body> : movingReaction?.id === item.id ? <><View style={s.row}>{reactionMovePets.map(pet => <Chip key={pet.id} label={pet.name} selected={reactionMovePetId === pet.id} onPress={() => chooseReactionMovePet(pet.id)} />)}</View><View style={s.row}>{reactionMoveRecords.map(record => <Chip key={record.id} label={moveObservationLabel(record, reactionMoveRecords)} selected={reactionMoveObservationId === record.id} onPress={() => { if (!busy) setReactionMoveObservationId(record.id); }} />)}</View><ErrorNote message={error} /><Button title="이 관찰로 옮기기" busy={busy} disabled={busy || !reactionMoveRecords.some(record => record.id === reactionMoveObservationId)} onPress={() => void saveReactionMove()} /><Button title="옮기기 취소" secondary disabled={busy} onPress={cancelReactionMove} /></> : <Button title="다른 관찰로 옮기기" secondary disabled={busy || movingReaction !== null || reactionTime !== null} onPress={() => startReactionMove(item)} /> : <Body muted>이 계정에 남긴 반응은 여기서 다른 관찰로 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}</Card>)}
       <View style={[s.row, { marginTop: 16 }]}>{actions.map(v => <Chip key={v} label={v} selected={action === v} onPress={() => { if (!busy) setAction(v); }} />)}<Chip label="기타" selected={!actions.includes(action) && !!action} onPress={() => { if (!busy) setAction(''); }} /></View>
       <Field label="해 본 행동" value={action} editable={!busy} onChangeText={setAction} maxLength={500} placeholder="직접 쓴 행동 · 선택" />
       <Heading>그 뒤 반응은 어땠나요?</Heading><View style={s.row}>{reactions.map(v => <Chip key={v} label={v} selected={reaction === v} onPress={() => { if (!busy) setReaction(v); }} />)}<Chip label="기타" selected={!reactions.includes(reaction) && !!reaction} onPress={() => { if (!busy) setReaction(''); }} /></View>
