@@ -47,3 +47,12 @@ export function observationExitHref(input: ObservationExitInput): `/(tabs)/conve
   if (petId) query.push(`petId=${encodeURIComponent(petId)}`);
   return `/(tabs)/conversation?${query.join('&')}`;
 }
+
+/**
+ * Leaving without a new reaction.
+ * A citation from the home chat or the conversation tab returns to that question.
+ * History, and an open without that id, stays on the record list. The thread is not rewritten.
+ */
+export function observationLeaveHref(input: ObservationExitInput): NonNullable<ReturnType<typeof observationExitHref>> | '/history' {
+  return observationExitHref(input) ?? '/history';
+}

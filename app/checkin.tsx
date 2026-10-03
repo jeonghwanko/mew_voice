@@ -5,7 +5,7 @@ import type { CompanionCheckinKind } from '@findthem/shared';
 import { Body, Button, Card, Chip, ErrorNote, Field, Heading, Loading, Screen, s } from '../src/ui/components';
 import { colors as c } from '../src/ui/theme';
 import { useCheckin, useCheckins, checkinLabels } from '../src/features/companion/useCheckins';
-import { checkinExitHref } from '../src/features/companion/checkinNavigation';
+import { checkinContinueHref, checkinExitHref } from '../src/features/companion/checkinNavigation';
 import { newRequestId } from '../src/features/companion/useCompanion';
 import { sessionStorage } from '../src/core/storage';
 import { useSession } from '../src/core/session';
@@ -42,6 +42,7 @@ export default function Checkin() {
   }, [key, editMode, existing.data, pet?.id, params.kind]);
   useEffect(() => { if (loadedKey === key) void sessionStorage.set(key, JSON.stringify(draft)).catch(() => undefined); }, [draft, key, loadedKey]);
   const leave = () => { router.replace(checkinExitHref(params)); };
+  const resumeLater = () => { const next = checkinContinueHref(params); if (next) router.replace(next); else router.back(); };
   const save = async () => {
     if (!pet) return; if (editMode && (!existing.data || existing.data.petId !== pet.id)) { setError('수정할 기록을 다시 불러온 뒤 저장해 주세요.'); return; } const occurredAt = parseKst(draft.occurredText); if (!occurredAt) { setError('발생 시각을 2026-09-10 19:20 형식으로 입력해 주세요.'); return; }
     if (draft.kind === 'NOTE' && !draft.note.trim()) { setError('메모 남기기에는 내용을 적어 주세요.'); return; }
@@ -63,7 +64,7 @@ export default function Checkin() {
       <Text style={styles.counter}>{draft.note.length}/500</Text><ErrorNote message={error} />
       {conflict && <Button title="최신 기록 다시 불러오기" secondary disabled={busy} onPress={reload} />}
       <Button title={params.id ? '수정 저장하기' : '기록 남기기'} busy={busy} disabled={busy || loadedKey !== key || (draft.kind === 'NOTE' && !draft.note.trim())} onPress={() => void save()} />
-      <Button title="나중에 이어 쓰기" secondary disabled={busy} onPress={() => router.back()} />
+      <Button title="나중에 이어 쓰기" secondary disabled={busy} onPress={resumeLater} />
       {!!params.id && <Button title="이 기록 삭제" danger disabled={busy} onPress={remove} />}</>}
     </>}
   </Screen></KeyboardAvoidingView>;

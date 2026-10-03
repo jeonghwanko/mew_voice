@@ -44,3 +44,13 @@ export function checkinExitHref(input: CheckinExitInput): '/' | `/(tabs)/convers
   if (petId) query.push(`petId=${encodeURIComponent(petId)}`);
   return `/(tabs)/conversation?${query.join('&')}`;
 }
+
+/**
+ * Leaving without saving or deleting a check-in.
+ * A citation from the home chat or the conversation tab returns to that question.
+ * History keeps the previous screen. The stored thread is not rewritten.
+ */
+export function checkinContinueHref(input: CheckinExitInput): Exclude<ReturnType<typeof checkinExitHref>, '/'> | null {
+  const next = checkinExitHref(input);
+  return next === '/' ? null : next;
+}

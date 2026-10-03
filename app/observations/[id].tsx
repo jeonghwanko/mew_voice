@@ -7,7 +7,7 @@ import { API_BASE, authHeaders, errorMessage } from '../../src/lib/api';
 import { displayDate } from '../../src/features/companion/RecordCard';
 import { VideoPreview } from '../../src/features/companion/VideoPreview';
 import { AudioPreview } from '../../src/features/companion/AudioPreview';
-import { observationExitHref } from '../../src/features/companion/observationNavigation';
+import { observationExitHref, observationLeaveHref } from '../../src/features/companion/observationNavigation';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> }>();
@@ -47,6 +47,6 @@ export default function ObservationScreen() {
       <ErrorNote message={error} /><Button title="반응을 기억해 두기" busy={busy} disabled={!action.trim() || !reaction.trim()} onPress={() => void save()} />
       <Button title="이 아이의 기록으로 대화하기" secondary onPress={() => router.push({ pathname: '/conversation', params: { petId: data.petId } })} />
     </>}
-    <Pressable onPress={() => router.replace('/history')} style={{ padding: 20, alignItems: 'center' }}><Body muted>기록 목록으로</Body></Pressable>
+    <Pressable onPress={() => router.replace(observationLeaveHref(params))} style={{ padding: 20, alignItems: 'center' }}><Body muted>기록 목록으로</Body></Pressable>
   </Screen>;
 }
