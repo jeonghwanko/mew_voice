@@ -1,17 +1,9 @@
 name: Mobile CI
 
 # mew_voice is an independent Expo project.
-# 모바일이나 공유 계약이 바뀔 때만 정적 검사와 기기 없는 단위 테스트를 실행한다.
+# 개발 중에는 자동으로 돌리지 않는다. Actions에서 workflow_dispatch로만 수동 실행한다.
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - '**'
-  pull_request:
-    branches: [master]
-    paths:
-      - '**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

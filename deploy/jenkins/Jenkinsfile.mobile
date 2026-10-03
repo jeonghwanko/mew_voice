@@ -1,4 +1,4 @@
-// office-stable only. Store uploads default on; no source commits or automatic triggers.
+// office-stable only. Play/TestFlight uploads default to false during development; no automatic triggers.
 pipeline {
     agent { label 'svl-mac-01' }
     options {
@@ -15,8 +15,8 @@ pipeline {
         string(name: 'STORE_BUILD_NUMBER', defaultValue: '', description: 'Optional explicit build number above durable counter. Default: previous reservation + 1, migration starts at 87.')
         string(name: 'REPLACE_INTERNAL_DRAFT_VERSION', defaultValue: '', description: 'Exact inspected Play internal draft versionCode to replace; blank refuses replacement.')
         booleanParam(name: 'SCREENSHOTS_ONLY', defaultValue: false, description: 'Build native simulator screenshots only; no signed artifacts or store upload.')
-        booleanParam(name: 'ANDROID_PUBLISH_TO_GOOGLEPLAY', defaultValue: true, description: 'Upload to Google Play internal testing (draft)')
-        booleanParam(name: 'IOS_UPLOAD_TO_TESTFLIGHT', defaultValue: true, description: 'Upload IPA to TestFlight; no App Review submission')
+        booleanParam(name: 'ANDROID_PUBLISH_TO_GOOGLEPLAY', defaultValue: false, description: 'Upload to Google Play internal testing (draft)')
+        booleanParam(name: 'IOS_UPLOAD_TO_TESTFLIGHT', defaultValue: false, description: 'Upload IPA to TestFlight; no App Review submission')
     }
     environment {
         CI = '1'
