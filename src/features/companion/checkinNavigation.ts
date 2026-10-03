@@ -1,9 +1,13 @@
+import { homeQuestionHref } from './homeConversation';
+
 /** Where a check-in was opened from. Only a real conversation id may leave the home path. */
 export type CheckinExitInput = {
   returnTo?: string | string[];
   conversationId?: string | string[];
   petId?: string | string[];
 };
+
+export type CheckinOrigin = 'conversation' | 'home';
 
 function firstParam(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -12,29 +16,31 @@ function firstParam(value: string | string[] | undefined) {
 }
 
 /**
- * Cited check-in opened from a saved conversation.
- * Home, history, and a missing thread stay on the plain edit route.
+ * Cited check-in opened from a saved conversation or the home chat.
+ * History and a missing thread stay on the plain edit route.
  */
-export function citedCheckinHref(checkinId: string, conversationId: string, petId?: string) {
+export function citedCheckinHref(checkinId: string, conversationId: string, petId?: string, origin: CheckinOrigin = 'conversation') {
   const id = checkinId.trim();
   const thread = conversationId.trim();
   if (!id || !thread) return id ? `/checkin?id=${encodeURIComponent(id)}` : '/checkin';
-  const query = [`id=${encodeURIComponent(id)}`, 'returnTo=conversation', `conversationId=${encodeURIComponent(thread)}`];
+  const query = [`id=${encodeURIComponent(id)}`, `returnTo=${origin}`, `conversationId=${encodeURIComponent(thread)}`];
   const pet = petId?.trim();
   if (pet) query.push(`petId=${encodeURIComponent(pet)}`);
   return `/checkin?${query.join('&')}`;
 }
 
 /**
- * After save or delete, return to the conversation that opened this check-in.
- * Any other origin, including home, still goes home. The thread id is required so the saved question is not dropped.
+ * After save or delete, return to the question that opened this check-in.
+ * The conversation tab and the home chat both keep the stored thread id and pet.
+ * History still goes home. A home open without that id also goes home, and the thread is not rewritten.
  */
-export function checkinExitHref(input: CheckinExitInput): '/' | `/(tabs)/conversation?${string}` {
-  if (firstParam(input.returnTo) !== 'conversation') return '/';
+export function checkinExitHref(input: CheckinExitInput): '/' | `/(tabs)/conversation?${string}` | ReturnType<typeof homeQuestionHref> {
+  const returnTo = firstParam(input.returnTo);
   const conversationId = firstParam(input.conversationId);
-  if (!conversationId) return '/';
-  const query = [`conversationId=${encodeURIComponent(conversationId)}`];
   const petId = firstParam(input.petId);
+  if (returnTo === 'home' && conversationId) return homeQuestionHref(conversationId, petId);
+  if (returnTo !== 'conversation' || !conversationId) return '/';
+  const query = [`conversationId=${encodeURIComponent(conversationId)}`];
   if (petId) query.push(`petId=${encodeURIComponent(petId)}`);
   return `/(tabs)/conversation?${query.join('&')}`;
 }

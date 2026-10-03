@@ -1,4 +1,4 @@
-import { homeConversationThread, latestHomeAnswer, type HomeConversationTurn } from './homeConversation';
+import { homeConversationThread, homeQuestionHref, homeQuestionTarget, latestHomeAnswer, type HomeConversationTurn } from './homeConversation';
 
 const momo: HomeConversationTurn[] = [
   { id: 'b', petId: 'demo-momo', question: '나중 질문', answer: '나중 답', status: 'COMPLETED' as const, createdAt: '2026-10-03T02:00:00Z', citedObservationIds: ['obs-2'] },
@@ -21,4 +21,15 @@ it('reads the newest saved reply and does not invent one', () => {
   expect(latestHomeAnswer(turns)).toBe('나중 답');
   expect(latestHomeAnswer([{ id: 'fail', petId: 'demo-momo', question: '실패', answer: '없는 답', status: 'FAILED', createdAt: '2026-10-03T04:00:00Z' }])).toBeNull();
   expect(latestHomeAnswer([{ id: 'blank', petId: 'demo-momo', question: '빈 답', answer: '  ', status: 'COMPLETED', createdAt: '2026-10-03T04:00:00Z' }])).toBeNull();
+});
+
+it('reopens the stored home question and does not invent a thread', () => {
+  expect(homeQuestionHref('thread-1', 'demo-momo')).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(homeQuestionHref('thread-1')).toEqual({ pathname: '/', params: { conversationId: 'thread-1' } });
+  expect(homeQuestionTarget({ conversationId: 'thread-1', petId: 'demo-momo' })).toEqual({ conversationId: 'thread-1', petId: 'demo-momo' });
+  expect(homeQuestionTarget({ conversationId: ['thread-1'], petId: ['demo-momo'] })).toEqual({ conversationId: 'thread-1', petId: 'demo-momo' });
+  expect(homeQuestionTarget({ conversationId: 'thread 1' })).toEqual({ conversationId: 'thread 1' });
+  expect(homeQuestionTarget({})).toBeNull();
+  expect(homeQuestionTarget({ conversationId: '   ', petId: 'demo-momo' })).toBeNull();
+  expect(homeQuestionTarget({ conversationId: 'thread-1', petId: '  ' })).toEqual({ conversationId: 'thread-1' });
 });

@@ -12,7 +12,9 @@ import { useSession } from '../../core/session';
 import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
 import { loadSavedConversations } from '../companion/conversationPages';
-import { homeConversationThread, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
+import { homeConversationThread, homeQuestionTarget, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
+import { citedCheckinHref } from '../companion/checkinNavigation';
+import { citedObservationHref } from '../companion/observationNavigation';
 import { homeCitedCheckinLink, presentConversationAnswer } from '../companion/daily';
 import { useCitedCheckinMoments } from '../companion/useCheckins';
 import { useCitedReactionMoments } from '../companion/citedReactions';
@@ -27,11 +29,13 @@ import { LatestObservation } from './LatestObservation';
 import { TodayCare } from './TodayCare';
 
 export default function CatStudio() {
-  const { customize } = useLocalSearchParams<{ customize?: string }>();
+  const { customize, conversationId: requestedConversationId, petId: requestedPetId } = useLocalSearchParams<{ customize?: string; conversationId?: string | string[]; petId?: string | string[] }>();
   const companion = useCompanion();
   const focused = useIsFocused();
   const { session } = useSession();
   const pet = companion.activePet;
+  const pets = companion.pets.data;
+  const selectSavedPet = companion.selectPet;
   const { width, height } = useWindowDimensions();
   const wide = width >= 760;
   const [keyboard, setKeyboard] = useState(false);
@@ -40,7 +44,24 @@ export default function CatStudio() {
   const [editing, setEditing] = useState(false), [side, setSide] = useState<'left' | 'right'>('right');
   const [menuPage, setMenuPage] = useState<HomeMenuPage | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [focusThread, setFocusThread] = useState<string | null>(null);
+  const appliedHomeQuestion = useRef<string | null>(null);
   useEffect(() => { if (focused && customize === '1') { setEditing(true); router.setParams({ customize: '' }); } }, [customize, focused]);
+  useEffect(() => {
+    if (!focused) return;
+    const target = homeQuestionTarget({ conversationId: requestedConversationId, petId: requestedPetId });
+    if (!target) { appliedHomeQuestion.current = null; return; }
+    const token = `${target.conversationId}\0${target.petId ?? ''}`;
+    if (appliedHomeQuestion.current === token) return;
+    if (target.petId) {
+      if (!pets) return;
+      if (pets.some(item => item.id === target.petId) && pet?.id !== target.petId) { void selectSavedPet(target.petId); return; }
+    }
+    appliedHomeQuestion.current = token;
+    setFocusThread(target.conversationId);
+    setChatOpen(true);
+    router.setParams({ conversationId: '', petId: '' });
+  }, [focused, requestedConversationId, requestedPetId, pet?.id, pets, selectSavedPet]);
   const [picker, setPicker] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
   const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
   const [active, setActive] = useState<CompanionConversation | null>(null);
@@ -116,7 +137,8 @@ export default function CatStudio() {
     } catch { if (token === speechGeneration.current && mounted.current) setError('이 기기에서 답변을 읽지 못했어요.'); }
   };
   const selectPet = async (id: string) => { try { await companion.selectPet(id); setPicker(false); } catch { setError('아이를 바꾸지 못했어요. 다시 선택해 주세요.'); } };
-  const navigateFromChat = (path: Href) => { setChatOpen(false); stopSpeech(); router.push(path); };
+  const closeChat = useCallback(() => { setChatOpen(false); setFocusThread(null); stopSpeech(); }, [stopSpeech]);
+  const navigateFromChat = (path: Href) => { closeChat(); router.push(path); };
   const panel = <AppearancePanel compact={!wide} value={appearance.value} onChange={appearance.setValue} onSave={() => { void appearance.save().then(saved => { if (saved) { setNotice('이 모습을 저장했어요'); if (!wide) setEditing(false); } }); }} saving={appearance.saving} ready={appearance.ready} onClose={() => setEditing(false)} side={side} onSide={() => setSide(side === 'left' ? 'right' : 'left')} />;
   const chatEntry = thinking ? '답변을 준비하고 있어요…' : turns.length ? '이전 대화 이어 읽기' : pet ? `${pet.name}에게 궁금한 이야기` : '우리 아이와 대화하기';
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
@@ -155,14 +177,14 @@ export default function CatStudio() {
           </View>
           {editing && wide && side === 'right' && <View style={styles.desktopPanel}>{panel}</View>}
         </View>
-        <Modal transparent visible={chatOpen} animationType="slide" onRequestClose={() => { setChatOpen(false); stopSpeech(); }}>
+        <Modal transparent visible={chatOpen} animationType="slide" onRequestClose={closeChat}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.chatBackdrop}>
-        <Pressable accessibilityRole="button" accessibilityLabel="대화 바깥 영역 닫기" onPress={() => { setChatOpen(false); stopSpeech(); }} style={StyleSheet.absoluteFill} />
+        <Pressable accessibilityRole="button" accessibilityLabel="대화 바깥 영역 닫기" onPress={closeChat} style={StyleSheet.absoluteFill} />
         <SafeAreaView edges={['bottom', 'left', 'right']} style={[styles.conversation, { maxHeight: height * 0.85 }]} accessibilityViewIsModal>
-          <View style={styles.pickerHeader}><Text style={styles.headerTitle}>글로 대화하기</Text><Pressable accessibilityRole="button" accessibilityLabel="대화 접기" onPress={() => { setChatOpen(false); stopSpeech(); }} style={styles.iconButton}><MewIcon name="close" /></Pressable></View>
+          <View style={styles.pickerHeader}><Text style={styles.headerTitle}>글로 대화하기</Text><Pressable accessibilityRole="button" accessibilityLabel="대화 접기" onPress={closeChat} style={styles.iconButton}><MewIcon name="close" /></Pressable></View>
           <View style={styles.bubbleHeader}><Text style={styles.bubbleLabel}>{companion.demo ? '기기 내 체험 · 실제 AI 답변 아님' : answer ? '기록을 바탕으로 한 AI 답변' : '오늘의 대화'}</Text>{thinking && <ActivityIndicator size="small" color={c.accent} />}{answer && <Pressable accessibilityRole="button" accessibilityLabel={speaking ? '최근 답변 읽기 정지' : '최근 답변 소리로 듣기'} onPress={() => void readAnswer()} style={styles.audioButton}><Ionicons name={speaking ? 'stop-circle-outline' : 'volume-medium-outline'} size={20} color={c.accent} /></Pressable>}</View>
-          <ScrollView ref={threadRef} style={{ maxHeight: keyboard ? 140 : Math.min(420, Math.max(180, Math.round(height * 0.46))) }} contentContainerStyle={{ paddingBottom: 8, gap: 16 }} accessibilityLiveRegion="polite" onContentSizeChange={() => threadRef.current?.scrollToEnd({ animated: false })}>
-            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={id => navigateFromChat(`/observations/${id}`)} onCheckin={id => navigateFromChat(`/checkin?id=${id}`)} />
+          <ScrollView ref={threadRef} style={{ maxHeight: keyboard ? 140 : Math.min(420, Math.max(180, Math.round(height * 0.46))) }} contentContainerStyle={{ paddingBottom: 8, gap: 16 }} accessibilityLiveRegion="polite" onContentSizeChange={() => { if (!focusThread) threadRef.current?.scrollToEnd({ animated: false }); }}>
+            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} focusId={focusThread} onFocusOffset={y => threadRef.current?.scrollTo({ y, animated: false })} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={(id, turnId) => navigateFromChat(citedObservationHref(id, turnId, pet?.id, 'home'))} onCheckin={(id, turnId) => navigateFromChat(citedCheckinHref(id, turnId, pet?.id, 'home'))} />
           </ScrollView>
           {(error || appearance.error || pending.error || savedThreads.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{error || appearance.error || errorMessage(pending.error ?? savedThreads.error ?? companion.pets.error)}</Text> : null}
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}
@@ -185,16 +207,16 @@ function turnText(turn: HomeConversationTurn) {
   if (turn.status === 'FAILED') return '답변을 준비하지 못했어요. 다시 질문해 주세요.';
   return turn.answer?.trim() || '아직 답변이 준비되지 않았어요.';
 }
-function ChatThread({ turns, thinking, loading, failed, petName, careAt, onObservation, onCheckin }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; careAt: (id: string) => string | undefined; onObservation: (id: string) => void; onCheckin: (id: string) => void }) {
+function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void }) {
   if (loading) return <Text style={styles.bubbleText}>이전 대화를 확인하고 있어요.</Text>;
   if (failed) return <Text style={styles.bubbleText}>이전 대화를 불러오지 못했어요.</Text>;
   if (!turns.length && !thinking) return <Text style={styles.bubbleText}>{petName ? `${petName}와 어떤 이야기를 나눠 볼까요?` : '반가워요. 나만의 고양이를 만나 보세요.'}</Text>;
   return <View style={{ gap: 16 }}>
-    {turns.map(turn => <View key={turn.id}>
+    {turns.map(turn => <View key={turn.id} onLayout={event => { if (turn.id === focusId) onFocusOffset(event.nativeEvent.layout.y); }}>
       <Text style={styles.turnQuestion}>“{turn.question}”</Text>
       <Text style={styles.bubbleText}>{turnText(turn)}</Text>
-      {(turn.citedObservationIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={id} onPress={() => onObservation(id)} style={styles.citation}><Text style={styles.citationText}>참고한 기록 {index + 1} 보기 →</Text></Pressable>)}
-      {(turn.citedCheckinIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={`checkin-${id}`} onPress={() => onCheckin(id)} style={styles.citation}><Text style={styles.citationText}>{homeCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
+      {(turn.citedObservationIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={id} onPress={() => onObservation(id, turn.id)} style={styles.citation}><Text style={styles.citationText}>참고한 기록 {index + 1} 보기 →</Text></Pressable>)}
+      {(turn.citedCheckinIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={`checkin-${id}`} onPress={() => onCheckin(id, turn.id)} style={styles.citation}><Text style={styles.citationText}>{homeCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
     </View>)}
     {thinking && !turns.some(turn => turn.status === 'QUEUED') ? <Text style={styles.bubbleText}>남겨 준 기록을 살펴보고 있어요.</Text> : null}
   </View>;

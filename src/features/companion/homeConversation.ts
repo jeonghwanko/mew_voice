@@ -22,3 +22,27 @@ export function latestHomeAnswer(turns: readonly HomeConversationTurn[]): string
   }
   return null;
 }
+
+function firstParam(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const text = raw?.trim();
+  return text || undefined;
+}
+
+/** Home route that reopens one stored question. The id is passed through, not replaced. */
+export function homeQuestionHref(conversationId: string, petId?: string) {
+  const params: { conversationId: string; petId?: string } = { conversationId };
+  if (petId) params.petId = petId;
+  return { pathname: '/' as const, params };
+}
+
+/**
+ * Question to reopen on the home chat.
+ * A blank id is not a thread, so nothing is opened and the stored thread is left alone.
+ */
+export function homeQuestionTarget(input: { conversationId?: string | string[]; petId?: string | string[] }) {
+  const conversationId = firstParam(input.conversationId);
+  if (!conversationId) return null;
+  const petId = firstParam(input.petId);
+  return petId ? { conversationId, petId } : { conversationId };
+}

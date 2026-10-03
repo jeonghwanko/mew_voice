@@ -6,7 +6,6 @@ it('returns to the saved conversation after a cited observation, and stays other
   expect(observationExitHref({ returnTo: 'conversation', conversationId: 'thread-1' })).toBe('/(tabs)/conversation?conversationId=thread-1');
   expect(observationExitHref({ returnTo: ['conversation'], conversationId: ['thread-1'], petId: ['demo-momo'] })).toBe('/(tabs)/conversation?conversationId=thread-1&petId=demo-momo');
   expect(observationExitHref({})).toBeNull();
-  expect(observationExitHref({ returnTo: 'home', conversationId: 'thread-1' })).toBeNull();
   expect(observationExitHref({ returnTo: 'history', conversationId: 'thread-1', petId: 'demo-momo' })).toBeNull();
   expect(observationExitHref({ returnTo: 'conversation' })).toBeNull();
   expect(observationExitHref({ returnTo: 'conversation', conversationId: '   ' })).toBeNull();
@@ -14,4 +13,17 @@ it('returns to the saved conversation after a cited observation, and stays other
   expect(observationExitHref({ returnTo: 'conversation', conversationId: 'thread 1', petId: 'pet 1' })).toBe('/(tabs)/conversation?conversationId=thread%201&petId=pet%201');
   expect(citedObservationHref('obs-1', '   ', 'demo-momo')).toBe('/observations/obs-1');
   expect(citedObservationHref('   ', 'thread-1', 'demo-momo')).toBe('/history');
+});
+
+it('returns to the home question after a citation opened from the home chat', () => {
+  expect(citedObservationHref('obs-1', 'thread-1', 'demo-momo', 'home')).toBe('/observations/obs-1?returnTo=home&conversationId=thread-1&petId=demo-momo');
+  expect(observationExitHref({ returnTo: 'home', conversationId: 'thread-1', petId: 'demo-momo' })).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(observationExitHref({ returnTo: 'home', conversationId: 'thread-1' })).toEqual({ pathname: '/', params: { conversationId: 'thread-1' } });
+  expect(observationExitHref({ returnTo: ['home'], conversationId: ['thread-1'], petId: ['demo-momo'] })).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(observationExitHref({ returnTo: 'home' })).toBeNull();
+  expect(observationExitHref({ returnTo: 'home', conversationId: '   ' })).toBeNull();
+  expect(observationExitHref({ returnTo: 'history', conversationId: 'thread-1', petId: 'demo-momo' })).toBeNull();
+  expect(citedObservationHref('obs/1', 'thread 1', 'pet 1', 'home')).toBe('/observations/obs%2F1?returnTo=home&conversationId=thread%201&petId=pet%201');
+  expect(observationExitHref({ returnTo: 'home', conversationId: 'thread 1', petId: 'pet 1' })).toEqual({ pathname: '/', params: { conversationId: 'thread 1', petId: 'pet 1' } });
+  expect(citedObservationHref('obs-1', '   ', 'demo-momo', 'home')).toBe('/observations/obs-1');
 });
