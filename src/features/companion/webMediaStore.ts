@@ -292,6 +292,23 @@ export async function durableDemoMediaUri(input: { uri: string; kind: DemoMediaK
   }
 }
 
+/** Points saved bytes at another existing cat. The bytes and observation id stay. Missing media is already absent. */
+export async function moveStoredDemoMediaPet(store: DemoMediaStore, observationId: string, petId: string) {
+  const targetId = petId.trim();
+  if (!observationId || !targetId) return null;
+  const record = await store.get(observationId);
+  if (!record) return null;
+  if (record.petId === targetId) return record;
+  const next = { ...record, petId: targetId };
+  await store.put(next);
+  return next;
+}
+
+export async function reassignObservationDemoMedia(observationId: string, petId: string) {
+  if (Platform.OS !== 'web' || !observationId || !petId.trim()) return;
+  try { await moveStoredDemoMediaPet(browserDemoMediaStore(), observationId, petId); } catch { /* the observation row already names the cat */ }
+}
+
 export async function forgetObservationDemoMedia(observationId: string) {
   if (Platform.OS !== 'web' || !observationId) return;
   revokeDemoMediaUrls([observationId]);

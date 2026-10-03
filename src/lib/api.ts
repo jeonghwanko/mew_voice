@@ -43,6 +43,8 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'OBSERVATION_CAPTION_ACCOUNT_READONLY') return '이 계정에 남긴 질문과 상황 태그는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_OBSERVATION_MEDIA') return '같은 종류의 사진·울음·영상만 바꿀 수 있어요.';
   if (error instanceof Error && error.message === 'OBSERVATION_MEDIA_ACCOUNT_READONLY') return '이 계정에 남긴 사진·울음·영상은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
+  if (error instanceof Error && error.message === 'INVALID_OBSERVATION_PET') return '옮길 아이를 확인해 주세요.';
+  if (error instanceof Error && error.message === 'OBSERVATION_PET_ACCOUNT_READONLY') return '이 계정에 남긴 관찰은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'CONVERSATION_ACCOUNT_READONLY') return '이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.';
   if (error instanceof Error && error.message === 'IDEMPOTENCY_CONFLICT') return '저장 여부를 기록 목록에서 확인한 뒤 새 기록으로 작성해 주세요.';
   if (error instanceof Error && error.message === 'EDIT_CONFLICT') return '기록이 변경되었어요. 최신 기록을 다시 불러와 주세요.';

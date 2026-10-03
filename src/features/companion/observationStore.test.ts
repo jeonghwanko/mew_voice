@@ -1,7 +1,7 @@
 import type { CompanionCheckin, CompanionConversation, CompanionInference, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, saveDemoConversation, type FeedbackRecord } from './demo';
 import { citedReactionGoneText, observationCitedReactions, presentCitedReactionAnswer, resolveCitedReactionMap } from './daily';
-import { deleteDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia } from './observationStore';
+import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia } from './observationStore';
 import { errorMessage } from '../../lib/api';
 
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
@@ -200,4 +200,66 @@ it('rejects a media kind change or account replace and does not invent a server 
   expect((await getDemo()).observations.find(item => item.id === 'photo-1')?.localPhotoUri).toBe('file:///companion-photos/a.jpg');
   expect(errorMessage(new Error('INVALID_OBSERVATION_MEDIA'))).toBe('같은 종류의 사진·울음·영상만 바꿀 수 있어요.');
   expect(errorMessage(new Error('OBSERVATION_MEDIA_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 사진·울음·영상은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
+});
+
+it('moves one observation to another existing cat and keeps id, media, caption, and reactions', async () => {
+  const saved = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const thread: CompanionConversation = { id: 'thread-1', petId: 'demo-momo', question: '창가에서 왜 울까요?', answer: saved, status: 'COMPLETED', citedObservationIds: ['obs-1'], citedCheckinIds: ['care-1'], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' };
+  const inference = { id: 'inf-1', observationId: 'obs-1', status: 'ABSTAINED' as const, utterance: null, confidence: 'low' as const, reason: '체험 모드에서는 AI를 호출하지 않아요.', observation: ['보호자가 사진과 상황을 입력했어요.'], possibilities: [], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.'], suggestedAction: null, citedObservationIds: ['older-photo'], createdAt: '2026-09-01T00:00:00Z' };
+  const photo = { ...observation('obs-1', 'demo-momo', 'PHOTO'), localPhotoUri: 'file:///companion-photos/obs-1.jpg', inference, question: '창가에서 왜 울까요?', contextTags: ['창가에서', '베란다'] };
+  const audio = { ...observation('obs-2', 'demo-momo', 'AUDIO'), localAudioUri: 'file:///companion-audio/obs-2.m4a', media: [{ kind: 'AUDIO' as const, mimeType: 'audio/m4a', byteSize: 12, durationMs: 2_000, url: '' }] };
+  const nabiPhoto = { ...observation('obs-3', 'demo-nabi', 'VIDEO'), localVideoUri: 'file:///companion-videos/nabi.mp4' };
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [photo, audio, nabiPhoto];
+    data.feedback = [reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z'), reaction('older', 'obs-1', '2026-09-01T01:00:00Z'), reaction('on-2', 'obs-2', '2026-09-03T00:00:00Z')];
+    data.checkins = [checkin()];
+    data.conversations = [thread];
+  });
+  const moved = await moveDemoObservation('obs-1', '  demo-nabi  ');
+  const state = await getDemo();
+  const kept = state.observations.find(item => item.id === 'obs-1');
+  expect(moved).toMatchObject({ id: 'obs-1', petId: 'demo-nabi', kind: 'PHOTO', question: '창가에서 왜 울까요?', contextTags: ['창가에서', '베란다'], localPhotoUri: 'file:///companion-photos/obs-1.jpg', status: 'ABSTAINED', createdAt: photo.createdAt });
+  expect(moved.inference).toEqual(inference);
+  expect(kept).toMatchObject({ id: 'obs-1', petId: 'demo-nabi', question: '창가에서 왜 울까요?', contextTags: ['창가에서', '베란다'], localPhotoUri: 'file:///companion-photos/obs-1.jpg' });
+  expect(kept?.inference).toEqual(inference);
+  expect(kept?.media).toEqual([]);
+  expect(state.observations.find(item => item.id === 'obs-2')).toMatchObject({ petId: 'demo-momo', localAudioUri: 'file:///companion-audio/obs-2.m4a' });
+  expect(state.observations.find(item => item.id === 'obs-3')?.localVideoUri).toBe('file:///companion-videos/nabi.mp4');
+  expect(state.feedback).toEqual([reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z'), reaction('older', 'obs-1', '2026-09-01T01:00:00Z'), reaction('on-2', 'obs-2', '2026-09-03T00:00:00Z')]);
+  expect(state.checkins).toEqual([checkin()]);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  expect(state.conversations[0]).toMatchObject({ id: 'thread-1', petId: 'demo-momo', question: '창가에서 왜 울까요?', answer: saved, citedObservationIds: ['obs-1'] });
+  const forNabi = await saveDemoConversation('demo-nabi', '창가에서 왜 울까요?', 'thread-nabi', new Date('2026-09-04T00:00:00Z'));
+  expect(forNabi.citedObservationIds).toEqual(['obs-1']);
+  expect(forNabi.answer).toContain('놀아줬어요');
+  const forMomo = await saveDemoConversation('demo-momo', '창가에서 왜 울까요?', 'thread-momo', new Date('2026-09-04T00:00:00Z'));
+  expect(forMomo.citedObservationIds).not.toContain('obs-1');
+  expect((await getDemo()).conversations.find(item => item.id === 'thread-1')?.answer).toBe(saved);
+  const audioMove = await moveDemoObservation('obs-2', 'demo-nabi');
+  expect(audioMove).toMatchObject({ id: 'obs-2', petId: 'demo-nabi', kind: 'AUDIO', localAudioUri: 'file:///companion-audio/obs-2.m4a', question: '식후에는 왜 그르릉거릴까요?' });
+  expect(audioMove.media).toEqual([{ kind: 'AUDIO', mimeType: 'audio/m4a', byteSize: 12, durationMs: 2_000, url: '' }]);
+});
+
+it('rejects a move to the same cat, a missing cat, or an account and does not invent a pet', async () => {
+  await changeDemo(data => {
+    data.observations = [{ ...observation('obs-1', 'demo-momo', 'PHOTO'), localPhotoUri: 'file:///companion-photos/obs-1.jpg', contextTags: ['창가에서'] }];
+    data.feedback = [reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z')];
+  });
+  await expect(moveDemoObservation('obs-1', 'demo-momo')).rejects.toThrow('INVALID_OBSERVATION_PET');
+  await expect(moveDemoObservation('obs-1', '   ')).rejects.toThrow('INVALID_OBSERVATION_PET');
+  await expect(moveDemoObservation('obs-1', 'demo-made-up')).rejects.toThrow('NOT_FOUND');
+  await expect(moveDemoObservation('missing', 'demo-momo')).rejects.toThrow('NOT_FOUND');
+  const before = await getDemo();
+  expect(before.pets.map(item => item.id)).toEqual(['demo-momo']);
+  expect(before.observations[0]).toMatchObject({ id: 'obs-1', petId: 'demo-momo', question: '창가에서 왜 울까요?', contextTags: ['창가에서'], localPhotoUri: 'file:///companion-photos/obs-1.jpg' });
+  expect(before.feedback).toHaveLength(1);
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(moveDemoObservation('obs-1', 'demo-nabi')).rejects.toThrow('CONSENT_REQUIRED');
+  const state = await getDemo();
+  expect(state.pets).toEqual(before.pets);
+  expect(state.observations[0].petId).toBe('demo-momo');
+  expect(state.feedback).toHaveLength(1);
+  expect(errorMessage(new Error('INVALID_OBSERVATION_PET'))).toBe('옮길 아이를 확인해 주세요.');
+  expect(errorMessage(new Error('OBSERVATION_PET_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 관찰은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });

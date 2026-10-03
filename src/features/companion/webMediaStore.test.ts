@@ -1,4 +1,4 @@
-import { createMemoryMediaStore, readDemoMedia, restoreDemoMediaUris, saveDemoMedia, webMediaUri, type StoredDemoMedia } from './webMediaStore';
+import { createMemoryMediaStore, moveStoredDemoMediaPet, readDemoMedia, restoreDemoMediaUris, saveDemoMedia, webMediaUri, type StoredDemoMedia } from './webMediaStore';
 
 const record = (observationId: string, kind: StoredDemoMedia['kind'], bytes: number[], mimeType: string, petId = 'cat-a'): StoredDemoMedia => ({
   observationId, petId, kind, mimeType, bytes: Uint8Array.from(bytes),
@@ -40,4 +40,22 @@ it('saves photo, audio, and video bytes and reads the same bytes after a reload'
   expect(await readDemoMedia(reloaded, 'video-1')).toBeNull();
   expect(await readDemoMedia(reloaded, 'photo-1')).toBeNull();
   await expect(saveDemoMedia(reloaded, record('empty', 'AUDIO', [], 'audio/webm'))).rejects.toThrow('MEDIA_UNREADABLE');
+});
+
+it('keeps the same media bytes when an observation moves to another cat', async () => {
+  const store = createMemoryMediaStore();
+  await saveDemoMedia(store, record('photo-1', 'PHOTO', [1, 2, 3], 'image/jpeg', 'cat-a'));
+  await saveDemoMedia(store, record('audio-1', 'AUDIO', [9, 8], 'audio/webm', 'cat-a'));
+  expect(await moveStoredDemoMediaPet(store, 'photo-1', 'cat-a')).toEqual(record('photo-1', 'PHOTO', [1, 2, 3], 'image/jpeg', 'cat-a'));
+  expect(await moveStoredDemoMediaPet(store, 'missing', 'cat-b')).toBeNull();
+  expect(await moveStoredDemoMediaPet(store, 'photo-1', '  ')).toBeNull();
+  const moved = await moveStoredDemoMediaPet(store, 'photo-1', ' cat-b ');
+  expect(moved).toEqual(record('photo-1', 'PHOTO', [1, 2, 3], 'image/jpeg', 'cat-b'));
+  expect(await readDemoMedia(store, 'photo-1')).toEqual(record('photo-1', 'PHOTO', [1, 2, 3], 'image/jpeg', 'cat-b'));
+  expect((await readDemoMedia(store, 'audio-1'))?.petId).toBe('cat-a');
+  await store.deletePet('cat-a');
+  expect(await readDemoMedia(store, 'photo-1')).toEqual(record('photo-1', 'PHOTO', [1, 2, 3], 'image/jpeg', 'cat-b'));
+  expect(await readDemoMedia(store, 'audio-1')).toBeNull();
+  await store.deletePet('cat-b');
+  expect(await readDemoMedia(store, 'photo-1')).toBeNull();
 });

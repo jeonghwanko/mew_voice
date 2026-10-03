@@ -136,3 +136,25 @@ export async function updateDemoObservationMedia(id: string, input: UpdateDemoOb
     return { previous, observation: updated };
   });
 }
+
+/**
+ * Move one observation onto another cat the caregiver already has.
+ * The observation id, media, question, context tags, reactions, and inference stay.
+ * Other observations, care, and stored conversation text stay.
+ * This does not create a cat, analyze the file, or upload anything.
+ */
+export async function moveDemoObservation(id: string, petId: string): Promise<DemoObservation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    if (typeof petId !== 'string' || !petId.trim()) throw new Error('INVALID_OBSERVATION_PET');
+    const targetId = petId.trim();
+    const index = data.observations.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('NOT_FOUND');
+    if (!data.pets.some(pet => pet.id === targetId)) throw new Error('NOT_FOUND');
+    const current = data.observations[index];
+    if (current.petId === targetId) throw new Error('INVALID_OBSERVATION_PET');
+    const updated: DemoObservation = { ...current, petId: targetId };
+    data.observations[index] = updated;
+    return updated;
+  });
+}

@@ -28,7 +28,7 @@ function conflicted(cause: unknown) { return (cause instanceof ApiError && cause
 
 export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
-  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
+  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const data = observation.data; const inference = data?.inference;
   const reactionMoments = useCitedReactionMoments(inference?.citedObservationIds ?? []);
   const citedReactions = observationCitedReactions(inference?.citedObservationIds, reactionMoments);
@@ -113,6 +113,24 @@ export default function ObservationScreen() {
     if (petId) next.petId = petId;
     router.push({ pathname: '/capture', params: next });
   };
+  const otherPets = (companion.pets.data ?? []).filter(pet => pet.id !== data?.petId);
+  const startMove = () => {
+    if (!data) return;
+    if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_PET_ACCOUNT_READONLY'))); return; }
+    const choices = (companion.pets.data ?? []).filter(pet => pet.id !== data.petId);
+    if (!choices.length) return;
+    setMovingPet(true); setMovePetId(choices[0].id); setError('');
+  };
+  const cancelMove = () => { setMovingPet(false); setMovePetId(''); setError(''); };
+  const saveMove = async () => {
+    if (!otherPets.some(pet => pet.id === movePetId)) { setError(errorMessage(new Error('INVALID_OBSERVATION_PET'))); return; }
+    setBusy(true); setError('');
+    try {
+      await companion.moveObservation(id, movePetId);
+      setMovingPet(false); setMovePetId('');
+      await observation.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
   return <Screen title={data?.question || '오늘의 관찰'} subtitle={data ? `${displayDate(data.createdAt)} · ${companion.pets.data?.find(p => p.id === data.petId)?.name ?? '우리 아이'}` : 'OBSERVATION'}>
     {observation.isLoading && <Loading />}<ErrorNote message={observation.error ? errorMessage(observation.error) : null} />
     {data && <>{data.kind === 'AUDIO' ? (data.localAudioUri ? <><AudioPreview uri={data.localAudioUri} />{Platform.OS === 'web' && <Body muted>{data.localMediaVolatile ? '브라우저 체험에서는 녹음을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.' : '브라우저 체험에서는 녹음을 서버로 보내지 않아요.'}</Body>}</> : <Card><Body muted>이 울음 파일은 이 화면에서 다시 들을 수 없어요. 체험 모드에서 기기에 남긴 녹음만 재생할 수 있어요.</Body></Card>) : data.kind === 'VIDEO' && data.localVideoUri ? <><VideoPreview uri={data.localVideoUri} />{Platform.OS === 'web' && data.localMediaVolatile && <Body muted>브라우저 체험에서는 영상을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body>}</> : data.kind === 'VIDEO' ? <Card><Body muted>이 영상 파일은 이 화면에서 재생할 수 없어요. 체험 모드에서 남긴 영상만 기기에서 미리 볼 수 있어요.</Body></Card> : data.localPhotoUri || !companion.demo ? <PrivatePhoto id={id} localUri={data.localPhotoUri} /> : <Card><Body muted>이 사진 파일은 이 화면에서 다시 볼 수 없어요. 체험 모드에서 기기에 남긴 사진만 미리 볼 수 있어요.</Body></Card>}{data.kind === 'AUDIO' && <Body muted>이 녹음은 AI로 분석하지 않았어요. 소리의 뜻을 번역하지 않아요.</Body>}{data.kind === 'VIDEO' && <Body muted>이 영상은 AI로 분석하지 않았어요. 길이와 상황만 기록이에요.</Body>}<View style={{ marginBottom: 14 }}><Badge>{companion.demo ? '체험 기록 · 실제 AI 분석 아님' : data.status === 'ABSTAINED' ? '판단 어려움' : '추정 해석 · 관찰을 바탕으로'}</Badge></View>{companion.demo && <Body>이 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요.</Body>}
@@ -135,6 +153,15 @@ export default function ObservationScreen() {
           <Body muted>{data.contextTags.length ? data.contextTags.join(' · ') : '상황 태그를 남기지 않았어요'}</Body>
           {companion.demo ? <Button title="질문과 상황 수정" secondary disabled={busy} onPress={startCaption} /> : <Body muted>이 계정에 남긴 질문과 상황 태그는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
         </>}
+      </Card>
+      <Card>
+        <Heading>어느 아이의 기록인가요</Heading>
+        <Body muted>이미 등록한 다른 아이에게만 옮겨요. 같은 관찰의 사진·울음·영상, 질문, 상황 태그, 반응 기록은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Body>
+        {companion.demo ? !companion.pets.data ? null : otherPets.length === 0 ? <Body muted>등록된 다른 아이가 없어서 옮길 수 없어요.</Body> : movingPet ? <>
+          <View style={s.row}>{otherPets.map(pet => <Chip key={pet.id} label={pet.name} selected={movePetId === pet.id} onPress={() => { if (!busy) setMovePetId(pet.id); }} />)}</View>
+          <Button title="이 아이에게 옮기기" busy={busy} disabled={busy || !otherPets.some(pet => pet.id === movePetId)} onPress={() => void saveMove()} />
+          <Button title="옮기기 취소" secondary disabled={busy} onPress={cancelMove} />
+        </> : <Button title="다른 아이에게 옮기기" secondary disabled={busy} onPress={startMove} /> : <Body muted>이 계정에 남긴 관찰은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
       </Card>
       {['QUEUED', 'PROCESSING'].includes(data.status) && <Card><Loading /><Body muted>화면을 나가도 서버의 분석은 이어져요. 기록 탭에서 다시 확인할 수 있어요.</Body></Card>}
       {data.status === 'CANCELLED' && <Card><Heading>관찰 요청이 취소되었어요</Heading><Body muted>보관 동의가 철회되어 분석을 중단했어요. 설정에서 동의를 확인한 뒤 새 기록을 만들 수 있어요.</Body><Button title="설정 열기" secondary onPress={() => router.push('/settings')} /></Card>}
