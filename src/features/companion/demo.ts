@@ -3,7 +3,7 @@ import { readDemo, writeDemo } from '../../core/storage';
 
 export type FeedbackRecord = CompanionFeedback;
 export type ChatReply = { id: string; text: string; citedObservationIds: string[] };
-export type DemoObservation = CompanionObservation & { localPhotoUri?: string; localVideoUri?: string };
+export type DemoObservation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string };
 export type DemoState = { version: 1; checkins: CompanionCheckin[]; checkinRequests: Record<string, string>; pets: CompanionPet[]; observations: DemoObservation[]; feedback: FeedbackRecord[]; consent: CompanionConsent };
 export type DemoMediaDraft = { uri: string; kind: 'PHOTO' | 'AUDIO' | 'VIDEO'; durationMs?: number; mimeType?: string; byteSize?: number; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
 export const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -24,9 +24,15 @@ export function demoInference(observation: CompanionObservation, previous: Compa
 /** Local demo record only. The media file stays on device; url is never a server upload. */
 export function buildDemoObservation(draft: DemoMediaDraft, previous: CompanionObservation[], feedback: FeedbackRecord[], now = new Date()): DemoObservation {
   if (draft.kind === 'VIDEO' && (typeof draft.durationMs !== 'number' || !Number.isFinite(draft.durationMs) || draft.durationMs <= 0 || draft.durationMs > 11_000)) throw new Error('VIDEO_TOO_LONG');
+  // Recorder stops at 45s; allow a small timer overrun so a finished take is not rejected.
+  if (draft.kind === 'AUDIO' && (typeof draft.durationMs !== 'number' || !Number.isFinite(draft.durationMs) || draft.durationMs <= 0 || draft.durationMs > 46_000)) throw new Error('AUDIO_TOO_LONG');
   const createdAt = now.toISOString();
   const observation: DemoObservation = { id: draft.idempotencyKey, petId: draft.petId, kind: draft.kind, question: draft.question || null, contextTags: draft.contextTags, status: 'ABSTAINED', failureCode: null, createdAt, completedAt: createdAt, media: [], inference: null, feedback: [] };
   if (draft.kind === 'PHOTO') observation.localPhotoUri = draft.uri;
+  if (draft.kind === 'AUDIO') {
+    observation.localAudioUri = draft.uri;
+    observation.media = [{ kind: 'AUDIO', mimeType: draft.mimeType || 'audio/m4a', byteSize: draft.byteSize && draft.byteSize > 0 ? draft.byteSize : 0, durationMs: draft.durationMs ?? null, url: '' }];
+  }
   if (draft.kind === 'VIDEO') {
     observation.localVideoUri = draft.uri;
     observation.media = [{ kind: 'VIDEO', mimeType: draft.mimeType || 'video/mp4', byteSize: draft.byteSize && draft.byteSize > 0 ? draft.byteSize : 0, durationMs: draft.durationMs ?? null, url: '' }];

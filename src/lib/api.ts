@@ -39,6 +39,8 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'NOT_FOUND') return '기록을 찾을 수 없어요.';
   if (error instanceof Error && error.message === 'CONSENT_REQUIRED') return '설정에서 기록 보관 동의를 확인해 주세요.';
   if (error instanceof Error && error.message === 'VIDEO_TOO_LONG') return '영상은 약 10초까지 남길 수 있어요. 더 짧은 영상을 선택해 주세요.';
+  if (error instanceof Error && error.message === 'AUDIO_TOO_LONG') return '울음은 45초까지 남길 수 있어요. 더 짧게 다시 녹음해 주세요.';
+  if (error instanceof Error && error.message === 'AUDIO_RECORDING_FAILED') return '울음을 저장하지 못했어요. 다시 녹음해 주세요.';
   if (error instanceof Error && error.message === 'VIDEO_LOCAL_ONLY') return '영상은 아직 서버로 보내지 않아요. 체험 모드에서 이 기기에만 저장할 수 있어요.';
   if (error instanceof Error && error.name === 'AbortError') return '연결이 오래 걸려 중단했어요. 저장 여부를 확인한 뒤 다시 시도해 주세요.';
   return '연결을 확인하고 다시 시도해 주세요. 입력한 내용은 이 화면에 남아 있어요.';

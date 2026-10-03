@@ -18,6 +18,19 @@ type CaptureKind = 'PHOTO' | 'AUDIO' | 'VIDEO';
 const requestedKind = (mode?: string): CaptureKind | undefined => mode === 'audio' ? 'AUDIO' : mode === 'video' ? 'VIDEO' : mode === 'photo' ? 'PHOTO' : undefined;
 const VIDEO_ACCEPT_MS = 11_000;
 
+async function keepRecording(source: string) {
+  if (Platform.OS === 'web' || !FileSystem.documentDirectory) return source;
+  const dir = `${FileSystem.documentDirectory}companion-audio/`;
+  await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  const ext = /\.(caf|wav|webm|mp3|m4a)(\?|$)/i.exec(source)?.[1]?.toLowerCase() ?? 'm4a';
+  const path = `${dir}${newRequestId()}.${ext}`;
+  await FileSystem.copyAsync({ from: source, to: path });
+  return path;
+}
+function dropKeptAudio(current: string) {
+  if (current && FileSystem.documentDirectory && current.startsWith(`${FileSystem.documentDirectory}companion-audio/`)) void FileSystem.deleteAsync(current, { idempotent: true });
+}
+
 export default function Capture() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const initialKind = requestedKind(mode);
@@ -42,7 +55,19 @@ export default function Capture() {
     void restore().catch(() => undefined);
     return () => { alive = false; };
   }, [draftKey, legacyDraftKey, kind]);
-  useEffect(() => { if (kind === 'AUDIO' && recordingSessionActive.current && !recording.isRecording && recording.url) { recordingSessionActive.current = false; setUri(recording.url); setKind('AUDIO'); setDurationMs(Math.max(1_000, recording.durationMillis)); } }, [kind, recording.durationMillis, recording.isRecording, recording.url]);
+  useEffect(() => {
+    if (!(kind === 'AUDIO' && recordingSessionActive.current && !recording.isRecording && recording.url)) return;
+    recordingSessionActive.current = false;
+    const source = recording.url;
+    const duration = recording.durationMillis;
+    let alive = true;
+    setBusy(true);
+    void keepRecording(source).then(saved => {
+      if (!alive) { dropKeptAudio(saved); return; }
+      setUri(saved); setKind('AUDIO'); setDurationMs(Math.max(1_000, duration)); setRequestId(newRequestId());
+    }).catch(e => { if (alive) setError(errorMessage(e)); }).finally(() => { if (alive) setBusy(false); });
+    return () => { alive = false; };
+  }, [kind, recording.durationMillis, recording.isRecording, recording.url]);
   const pick = async (camera: boolean) => {
     setError(''); setPermissionIssue(null);
     try {
@@ -59,9 +84,15 @@ export default function Capture() {
     setError(''); setPermissionIssue(null);
     try {
       if (recording.isRecording) {
-        await recorder.stop();
-        if (!recorder.uri) throw new Error('AUDIO_RECORDING_FAILED');
-        recordingSessionActive.current = false; setUri(recorder.uri); setKind('AUDIO'); setDurationMs(Math.max(1_000, recording.durationMillis)); setRequestId(newRequestId()); return;
+        setBusy(true);
+        try {
+          await recorder.stop();
+          if (!recorder.uri) throw new Error('AUDIO_RECORDING_FAILED');
+          recordingSessionActive.current = false;
+          const saved = await keepRecording(recorder.uri);
+          setUri(saved); setKind('AUDIO'); setDurationMs(Math.max(1_000, recording.durationMillis)); setRequestId(newRequestId());
+        } finally { setBusy(false); }
+        return;
       }
       const permission = await AudioModule.requestRecordingPermissionsAsync();
       if (!permission.granted) { setPermissionIssue('generic'); return; }
@@ -69,9 +100,10 @@ export default function Capture() {
       await recorder.prepareToRecordAsync(); recordingSessionActive.current = true; recorder.record({ forDuration: 45 });
     } catch (e) { setError(errorMessage(e)); }
   };
-  const discardAudio = () => { if (recording.isRecording) void recorder.stop(); setUri(''); setDurationMs(undefined); setRequestId(newRequestId()); };
+  const discardAudio = () => { if (recording.isRecording) void recorder.stop(); dropKeptAudio(uri); setUri(''); setDurationMs(undefined); setRequestId(newRequestId()); };
   const selectKind = (next: CaptureKind) => {
     if (recording.isRecording) void recorder.stop();
+    if (kind === 'AUDIO') dropKeptAudio(uri);
     setKind(next); setUri(''); setDurationMs(undefined); setError(''); setPermissionIssue(null); setRequestId(newRequestId());
   };
   const acceptVideo = async (asset: ImagePicker.ImagePickerAsset) => {
@@ -133,7 +165,7 @@ export default function Capture() {
     {!activePet && <Button title="먼저 우리 아이 등록하기" onPress={() => router.replace('/pets/new')} />}
     <View style={s.row}><Chip label="사진" selected={kind === 'PHOTO'} onPress={() => selectKind('PHOTO')} /><Chip label="울음 녹음" selected={kind === 'AUDIO'} onPress={() => selectKind('AUDIO')} /><Chip label="짧은 영상" selected={kind === 'VIDEO'} onPress={() => selectKind('VIDEO')} /></View>
     {kind === 'PHOTO' ? <><>{uri && <Image accessibilityLabel="선택한 관찰 사진" source={{ uri }} style={{ width: '100%', height: 240, borderRadius: 22, marginBottom: 12 }} resizeMode="cover" />}</><Card><Heading>얼굴과 자세가 함께 보이게</Heading><Body muted>우리 아이가 편안한 거리에서 촬영해 주세요. 반응을 유도할 필요는 없어요.</Body></Card><Button title={uri ? '다른 사진 선택' : '사진첩에서 선택'} secondary icon="images-outline" disabled={busy} onPress={() => void pick(false)} /><Button title="카메라로 촬영" secondary icon="camera-outline" disabled={busy} onPress={() => void pick(true)} /></> : null}
-    {kind === 'AUDIO' ? <Card accent={recording.isRecording}><Heading>{recording.isRecording ? `녹음 중 · ${Math.ceil(recording.durationMillis / 1000)}초` : uri ? `울음 녹음 · ${Math.max(1, Math.round((durationMs ?? 0) / 1000))}초` : '짧은 울음만 조용히 녹음해 주세요'}</Heading><Body muted>최대 45초예요. 사람 대화나 다른 동물의 소리가 들어가지 않게 해 주세요. 소리만으로 뜻을 확정하지 않아요.</Body>{uri && !recording.isRecording && <Button title="재생하기" secondary icon="play" onPress={() => { player.seekTo(0); player.play(); }} />}{uri && !recording.isRecording && <Button title="다시 녹음하기" secondary icon="refresh" onPress={discardAudio} />}<Button title={recording.isRecording ? '녹음 멈추기' : '녹음 시작'} icon={recording.isRecording ? 'stop' : 'mic'} disabled={busy} onPress={() => void toggleRecording()} /></Card> : null}
+    {kind === 'AUDIO' ? <Card accent={recording.isRecording}><Heading>{recording.isRecording ? `녹음 중 · ${Math.ceil(recording.durationMillis / 1000)}초` : uri ? `울음 녹음 · ${Math.max(1, Math.round((durationMs ?? 0) / 1000))}초` : '짧은 울음만 조용히 녹음해 주세요'}</Heading><Body muted>최대 45초예요. 사람 대화나 다른 동물의 소리가 들어가지 않게 해 주세요. 소리만으로 뜻을 확정하지 않아요.</Body>{uri && !recording.isRecording && <Button title="재생하기" secondary icon="play" onPress={() => { player.seekTo(0); player.play(); }} />}{Platform.OS === 'web' && uri && !recording.isRecording ? <Body muted>브라우저 체험에서는 녹음을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body> : null}{uri && !recording.isRecording && <Button title="다시 녹음하기" secondary icon="refresh" onPress={discardAudio} />}<Button title={recording.isRecording ? '녹음 멈추기' : '녹음 시작'} icon={recording.isRecording ? 'stop' : 'mic'} disabled={busy} onPress={() => void toggleRecording()} /></Card> : null}
     {kind === 'VIDEO' ? <Card><Heading>{uri ? `짧은 영상 · ${Math.max(1, Math.round((durationMs ?? 0) / 1000))}초` : '약 10초 영상을 남겨 주세요'}</Heading><Body muted>선택한 아이의 기기 기록으로만 남아요. 영상 속 행동이나 소리를 분석하지 않고, 감정으로 번역하지도 않아요.</Body>{uri ? <VideoPreview uri={uri} /> : null}{Platform.OS === 'web' && uri ? <Body muted>브라우저 체험에서는 영상을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body> : null}{uri ? <Button title="영상 버리기" secondary icon="trash-outline" disabled={busy} onPress={discardVideo} /> : null}<Button title={uri ? '다른 영상 촬영' : '영상 촬영'} secondary icon="videocam-outline" disabled={busy} onPress={() => void takeVideo()} /><Button title="보관함에서 약 10초 영상 선택" secondary icon="film-outline" disabled={busy} onPress={() => void pickVideo()} />{videoBlocked && <Body muted>로그인한 계정에는 영상 업로드 계약이 없어요. 체험 모드에서 이 기기에만 저장할 수 있어요.</Body>}</Card> : null}
     {permissionIssue && <Card><Body>{permissionIssue === 'library' ? '영상 보관함 권한이 꺼져 있어요. 설정에서 사진과 동영상 접근을 허용하거나, 카메라로 약 10초를 촬영해 주세요.' : permissionIssue === 'camera' ? '영상 촬영에 필요한 카메라 권한이 꺼져 있어요. 설정에서 카메라를 허용하거나, 이미 찍은 약 10초 영상을 보관함에서 선택할 수 있어요.' : '카메라 또는 마이크 권한이 꺼져 있어요. 사진을 선택하거나 설정에서 권한을 허용해 주세요.'}</Body>{permissionIssue === 'camera' && <Button title="영상 보관함에서 선택" secondary icon="film-outline" disabled={busy} onPress={() => void pickVideo()} />}{Platform.OS !== 'web' && <Button title="기기 설정 열기" secondary onPress={() => void Linking.openSettings()} />}</Card>}
     <Field label="궁금한 점 · 선택" placeholder="예: 창가를 보며 자꾸 울어요" multiline value={question} onChangeText={changeQuestion} maxLength={1500} editable={!busy} />

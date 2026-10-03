@@ -9,7 +9,7 @@ import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, groundedDemoReply } from './demo';
 import { OBSERVATION_PAGE_SIZE, pageObservations } from './observationPages';
 
-export type Observation = CompanionObservation & { localPhotoUri?: string; localVideoUri?: string };
+export type Observation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string };
 export type PhotoDraft = { uri: string; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
 export type MediaDraft = PhotoDraft & { kind: 'PHOTO' | 'AUDIO' | 'VIDEO'; durationMs?: number; mimeType?: string; byteSize?: number };
 const base = '/pet-companion';
@@ -75,8 +75,8 @@ export function useCompanion() {
   const removePet = async (id: string) => {
     if (demo && Platform.OS !== 'web') {
       const owned = (await getDemo()).observations.filter(o => o.petId === id);
-      const files = [...owned.map(o => o.localPhotoUri), ...owned.map(o => o.localVideoUri)];
-      for (const uri of files) if (uri?.startsWith(FileSystem.documentDirectory + 'companion-photos/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-videos/')) await FileSystem.deleteAsync(uri, { idempotent: true });
+      const files = [...owned.map(o => o.localPhotoUri), ...owned.map(o => o.localAudioUri), ...owned.map(o => o.localVideoUri)];
+      for (const uri of files) if (uri?.startsWith(FileSystem.documentDirectory + 'companion-photos/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-audio/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-videos/')) await FileSystem.deleteAsync(uri, { idempotent: true });
     }
     if (demo) await changeDemo(data => { const deleted = new Set(data.observations.filter(o => o.petId === id).map(o => o.id)); data.pets = data.pets.filter(p => p.id !== id); data.observations = data.observations.filter(o => o.petId !== id); data.feedback = data.feedback.filter(f => !deleted.has(f.observationId)); data.checkins = data.checkins.filter(item => item.petId !== id); });
     else { try { await api.delete(`${base}/pets/${id}`); } finally { await invalidate(); } }

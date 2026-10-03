@@ -50,4 +50,16 @@ describe('private demo memory', () => {
     expect(saved.media[0].url).not.toMatch(/^https?:/);
     expect(() => buildDemoObservation({ uri: 'file:///long.mp4', kind: 'VIDEO', durationMs: 11_001, petId: 'cat-a', question: '', contextTags: [], idempotencyKey: 'video-long' }, [], [])).toThrow('VIDEO_TOO_LONG');
   });
+  it('keeps a demo cry on device without uploading or translating it', () => {
+    const saved = buildDemoObservation({ uri: 'file:///companion-audio/cry.m4a', kind: 'AUDIO', durationMs: 3_200, mimeType: 'audio/m4a', petId: 'cat-a', question: '왜 울까요?', contextTags: ['창가에서'], idempotencyKey: 'audio-1' }, [], []);
+    expect(saved.kind).toBe('AUDIO');
+    expect(saved.localAudioUri).toBe('file:///companion-audio/cry.m4a');
+    expect(saved.status).toBe('ABSTAINED');
+    expect(saved.inference?.utterance).toBeNull();
+    expect(saved.inference?.observation.join(' ')).toContain('소리를 분석하지 않아요');
+    expect(saved.media[0]).toMatchObject({ kind: 'AUDIO', mimeType: 'audio/m4a', durationMs: 3_200, url: '' });
+    expect(saved.media[0].url).not.toMatch(/^https?:/);
+    expect(() => buildDemoObservation({ uri: 'file:///long.m4a', kind: 'AUDIO', durationMs: 46_001, petId: 'cat-a', question: '', contextTags: [], idempotencyKey: 'audio-long' }, [], [])).toThrow('AUDIO_TOO_LONG');
+    expect(() => buildDemoObservation({ uri: 'file:///missing.m4a', kind: 'AUDIO', petId: 'cat-a', question: '', contextTags: [], idempotencyKey: 'audio-empty' }, [], [])).toThrow('AUDIO_TOO_LONG');
+  });
 });
