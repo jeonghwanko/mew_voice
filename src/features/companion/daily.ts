@@ -84,6 +84,23 @@ function citedCareSentence(care: CitedCareRecord, now: Date) {
  * An id that is not loaded yet stays absent so a later sentence does not move up.
  * No loaded record means the stored answer is left alone.
  */
+/**
+ * This cat's loaded row wins.
+ * A check-in that is not on this cat's list is not missing: the same id may belong to another cat.
+ * A by-id read of gone is gone. A failed read stays absent so the stored sentence is left alone.
+ */
+export function resolveCitedCareMap(input: {
+  known: ReadonlyMap<string, CitedCareRecord>;
+  extra: readonly { id: string; record: CitedCareRecord | null }[];
+}) {
+  const map = new Map(input.known);
+  for (const item of input.extra) {
+    if (!item.record || map.has(item.id)) continue;
+    map.set(item.id, item.record);
+  }
+  return map;
+}
+
 export function citedCaresForAnswer(
   ids: readonly string[] | null | undefined,
   moments: ReadonlyMap<string, CitedCareRecord>,

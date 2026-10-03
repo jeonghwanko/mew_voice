@@ -52,3 +52,24 @@ export async function deleteDemoCheckin(id: string, version: number) {
     data.checkins = data.checkins.filter(item => item.id !== id);
   });
 }
+
+/**
+ * Move one care check-in onto another cat the caregiver already has.
+ * The check-in id, kind, note, and occurred time stay on that same row.
+ * Conversations keep the cited id. This does not create a check-in or a cat.
+ */
+export async function moveDemoCheckin(id: string, petId: string) {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    if (typeof petId !== 'string' || !petId.trim()) throw new Error('INVALID_CHECKIN_PET');
+    const targetId = petId.trim();
+    const index = data.checkins.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('NOT_FOUND');
+    if (!data.pets.some(pet => pet.id === targetId)) throw new Error('NOT_FOUND');
+    const current = data.checkins[index];
+    if (current.petId === targetId) throw new Error('INVALID_CHECKIN_PET');
+    const updated = { ...current, petId: targetId, version: current.version + 1, updatedAt: new Date().toISOString() };
+    data.checkins[index] = updated;
+    return updated;
+  });
+}

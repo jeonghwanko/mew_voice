@@ -4,9 +4,9 @@ import type { CompanionCheckin, CompanionListResponse, CreateCompanionCheckinInp
 import { useCompanion } from './useCompanion';
 import { getDemo } from './demo';
 import { ApiError, api, request } from '../../lib/api';
-import { deleteDemoCheckin, saveDemoCheckin, updateDemoCheckin } from './checkinStore';
+import { deleteDemoCheckin, moveDemoCheckin, saveDemoCheckin, updateDemoCheckin } from './checkinStore';
 import { checkinListPath } from './observationPages';
-import { type CitedCareRecord } from './daily';
+import { resolveCitedCareMap, type CitedCareRecord } from './daily';
 export { checkinLabels } from './daily';
 
 const base = '/pet-companion/checkins';
@@ -37,7 +37,14 @@ export function useCheckins() {
     if (companion.demo) await deleteDemoCheckin(id, version); else await request(`${base}/${id}`, 'DELETE', { version });
     await invalidate();
   };
-  return { ...companion, list, items: list.data?.pages.flatMap(page => page.items) ?? [], create, update, remove };
+  // Account mode has no route that moves a check-in to another pet. Do not pretend a server update happened.
+  const move = async (id: string, petId: string) => {
+    if (!companion.demo) throw new Error('CHECKIN_PET_ACCOUNT_READONLY');
+    const record = await moveDemoCheckin(id, petId);
+    await invalidate();
+    return record;
+  };
+  return { ...companion, list, items: list.data?.pages.flatMap(page => page.items) ?? [], create, update, remove, move };
 }
 export async function loadCheckinById(demo: boolean, id: string): Promise<CompanionCheckin> {
   if (!demo) return api.get(`${base}/${id}`);
@@ -60,7 +67,7 @@ function citedCareMissing(error: unknown) {
   return (error instanceof ApiError && error.status === 404) || (error instanceof Error && error.message === 'NOT_FOUND');
 }
 
-/** Current cited care, from the loaded list or one check-in read. A confirmed miss is gone; a failed read stays absent. */
+/** Current cited care, from the loaded list or one check-in read. Another cat still counts when the id matches. A confirmed miss is gone; a failed read stays absent. */
 export function useCitedCheckinMoments(ids: readonly string[]) {
   const checkins = useCheckins();
   const joined = ids.join('\0');
@@ -70,8 +77,8 @@ export function useCitedCheckinMoments(ids: readonly string[]) {
     for (const item of checkins.items) map.set(item.id, citedCareFromCheckin(item));
     return map;
   }, [checkins.items]);
-  const listComplete = checkins.list.isSuccess && !checkins.list.hasNextPage;
-  const missingKey = (listComplete ? [] : unique.filter(id => !known.has(id))).join('\0');
+  // Not being on this cat's list is not a miss. The same id may now belong to another cat, so read it.
+  const missingKey = unique.filter(id => !known.has(id)).join('\0');
   const extra = useQuery({
     queryKey: [...checkins.key, 'cited-checkin-moments', missingKey],
     enabled: missingKey.length > 0,
@@ -86,15 +93,5 @@ export function useCitedCheckinMoments(ids: readonly string[]) {
       }));
     },
   });
-  return useMemo(() => {
-    const map = new Map(known);
-    if (listComplete) {
-      for (const id of unique) if (!map.has(id)) map.set(id, { status: 'gone' });
-    }
-    for (const item of extra.data ?? []) {
-      if (!item.record || map.has(item.id)) continue;
-      map.set(item.id, item.record);
-    }
-    return map;
-  }, [known, extra.data, listComplete, unique]);
+  return useMemo(() => resolveCitedCareMap({ known, extra: extra.data ?? [] }), [known, extra.data]);
 }

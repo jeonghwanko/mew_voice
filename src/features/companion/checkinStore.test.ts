@@ -1,6 +1,9 @@
-import { changeDemo, getDemo, initialDemo } from './demo';
-import { saveDemoCheckin, updateDemoCheckin, deleteDemoCheckin } from './checkinStore';
-import { citedCareGoneText, citedCareName, citedCaresForAnswer, conversationCitedCheckinLink, dayKey, formatDiaryDay, homeCitedCheckinLink, isToday, presentCareMention, presentCitedCareAnswer, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins, type CitedCareRecord } from './daily';
+import type { CompanionConversation } from '@findthem/shared';
+import { changeDemo, getDemo, initialDemo, saveDemoConversation } from './demo';
+import { saveDemoCheckin, updateDemoCheckin, deleteDemoCheckin, moveDemoCheckin } from './checkinStore';
+import { citedCareGoneText, citedCareName, citedCaresForAnswer, conversationCitedCheckinLink, dayKey, formatDiaryDay, homeCitedCheckinLink, isToday, presentCareMention, presentCitedCareAnswer, recentRecordedDays, resolveCitedCareMap, resolveSelectedPet, todayCheckinSummary, todayCheckins, type CitedCareRecord } from './daily';
+import { errorMessage } from '../../lib/api';
+import { loadCheckinById } from './useCheckins';
 import { formatDayKey } from './weeklySummary';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const draft = () => ({ petId: 'demo-momo', kind: 'PLAY' as const, note: '낚싯대 놀이', occurredAt: '2026-09-01T12:00:00.000Z', idempotencyKey: 'checkin-one' });
@@ -155,4 +158,71 @@ it('refreshes every cited care sentence and leaves sentences that are not those 
   ]);
   expect(citedCaresForAnswer(['missing'], moments)).toBeUndefined();
   expect(citedCaresForAnswer(undefined, moments)).toBeUndefined();
+});
+
+it('moves one check-in to another existing cat and keeps the cited id, note, and time', async () => {
+  const now = new Date('2026-09-10T00:30:00Z');
+  const saved = '질문과 맞는 저장 기록을 찾았어요. 오늘 돌봄에 “놀아줬어요”라고 골랐고, “낚싯대 놀이”라고 적었어요. 한 번의 기록으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.';
+  const thread: CompanionConversation = { id: 'thread-1', petId: 'demo-momo', question: '낚싯대 놀이는 어땠나요?', answer: saved, status: 'COMPLETED', citedObservationIds: [], citedCheckinIds: ['checkin-one'], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' };
+  await changeDemo(data => { data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' }); data.conversations = [thread]; });
+  const created = await saveDemoCheckin({ ...draft(), occurredAt: '2026-09-09T15:00:00.000Z' });
+  const requests = { ...(await getDemo()).checkinRequests };
+  const moved = await moveDemoCheckin(created.id, '  demo-nabi  ');
+  const state = await getDemo();
+  const kept = state.checkins.find(item => item.id === 'checkin-one');
+  expect(moved).toMatchObject({ id: 'checkin-one', petId: 'demo-nabi', kind: 'PLAY', note: '낚싯대 놀이', occurredAt: '2026-09-09T15:00:00.000Z', version: 2, createdAt: created.createdAt });
+  expect(kept).toMatchObject({ id: 'checkin-one', petId: 'demo-nabi', kind: 'PLAY', note: '낚싯대 놀이', occurredAt: '2026-09-09T15:00:00.000Z', version: 2 });
+  expect(state.checkins).toHaveLength(1);
+  expect(state.checkinRequests).toEqual(requests);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  expect(state.observations).toEqual([]);
+  expect(state.conversations[0]).toMatchObject({ id: 'thread-1', petId: 'demo-momo', question: '낚싯대 놀이는 어땠나요?', answer: saved, citedCheckinIds: ['checkin-one'] });
+  const listedOnMomo = state.checkins.filter(item => item.petId === 'demo-momo');
+  const loaded = await loadCheckinById(true, 'checkin-one');
+  const moments = resolveCitedCareMap({
+    known: new Map(listedOnMomo.map(item => [item.id, { status: 'saved' as const, occurredAt: item.occurredAt, kind: item.kind, note: item.note }])),
+    extra: [{ id: loaded.id, record: { status: 'saved', occurredAt: loaded.occurredAt, kind: loaded.kind, note: loaded.note } }],
+  });
+  expect(listedOnMomo.map(item => item.id)).not.toContain('checkin-one');
+  expect(state.checkins.filter(item => item.petId === 'demo-nabi').map(item => item.id)).toEqual(['checkin-one']);
+  expect(moments.get('checkin-one')?.status).toBe('saved');
+  const shown = presentCitedCareAnswer(state.conversations[0].answer, moments.get('checkin-one'), now);
+  expect(shown).toContain('낚싯대 놀이');
+  expect(shown).not.toContain(citedCareGoneText);
+  const edited = await updateDemoCheckin(created.id, { version: moved.version, note: '창가를 떠났어요' });
+  expect(edited).toMatchObject({ id: 'checkin-one', petId: 'demo-nabi', note: '창가를 떠났어요', occurredAt: '2026-09-09T15:00:00.000Z' });
+  const forNabi = await saveDemoConversation('demo-nabi', '낚싯대 놀이', 'thread-nabi', new Date('2026-09-10T01:00:00.000Z'));
+  expect(forNabi.citedCheckinIds).toEqual(['checkin-one']);
+  expect(forNabi.petId).toBe('demo-nabi');
+  const forMomo = await saveDemoConversation('demo-momo', '낚싯대 놀이', 'thread-momo', new Date('2026-09-10T01:00:00.000Z'));
+  expect(forMomo.citedCheckinIds).not.toContain('checkin-one');
+  expect((await getDemo()).conversations.find(item => item.id === 'thread-1')?.citedCheckinIds).toEqual(['checkin-one']);
+  expect((await saveDemoCheckin({ ...draft(), occurredAt: '2026-09-09T15:00:00.000Z' })).id).toBe('checkin-one');
+  expect((await getDemo()).checkins).toHaveLength(1);
+});
+
+it('rejects a check-in move to the same cat, a missing cat, or an account and does not invent a pet', async () => {
+  const saved = await saveDemoCheckin(draft());
+  await expect(moveDemoCheckin(saved.id, 'demo-momo')).rejects.toThrow('INVALID_CHECKIN_PET');
+  await expect(moveDemoCheckin(saved.id, '   ')).rejects.toThrow('INVALID_CHECKIN_PET');
+  await expect(moveDemoCheckin(saved.id, 'demo-made-up')).rejects.toThrow('NOT_FOUND');
+  await expect(moveDemoCheckin('missing', 'demo-momo')).rejects.toThrow('NOT_FOUND');
+  const before = await getDemo();
+  expect(before.pets.map(item => item.id)).toEqual(['demo-momo']);
+  expect(before.checkins[0]).toMatchObject({ id: 'checkin-one', petId: 'demo-momo', note: '낚싯대 놀이', occurredAt: '2026-09-01T12:00:00.000Z', version: 1 });
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(moveDemoCheckin(saved.id, 'demo-nabi')).rejects.toThrow('CONSENT_REQUIRED');
+  const state = await getDemo();
+  expect(state.pets).toEqual(before.pets);
+  expect(state.checkins[0]).toMatchObject({ id: 'checkin-one', petId: 'demo-momo', version: 1 });
+  const gone = resolveCitedCareMap({ known: new Map(), extra: [{ id: 'checkin-one', record: { status: 'gone' } }, { id: 'unread', record: null }] });
+  expect(gone.get('checkin-one')).toEqual({ status: 'gone' });
+  expect(gone.has('unread')).toBe(false);
+  const kept = resolveCitedCareMap({
+    known: new Map([['checkin-one', { status: 'saved', occurredAt: saved.occurredAt, kind: 'PLAY', note: '목록에 있는 메모' }]]),
+    extra: [{ id: 'checkin-one', record: { status: 'gone' } }],
+  });
+  expect(kept.get('checkin-one')).toEqual({ status: 'saved', occurredAt: saved.occurredAt, kind: 'PLAY', note: '목록에 있는 메모' });
+  expect(errorMessage(new Error('INVALID_CHECKIN_PET'))).toBe('옮길 아이를 확인해 주세요.');
+  expect(errorMessage(new Error('CHECKIN_PET_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 돌봄 기록은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });
