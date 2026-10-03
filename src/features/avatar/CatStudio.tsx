@@ -12,6 +12,7 @@ import { useSession } from '../../core/session';
 import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
 import { loadSavedConversations } from '../companion/conversationPages';
+import { conversationOpenPet, findDemoConversation } from '../companion/conversationStore';
 import { homeConversationThread, homeQuestionTarget, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
 import { citedCheckinHref } from '../companion/checkinNavigation';
 import { citedObservationHref } from '../companion/observationNavigation';
@@ -53,17 +54,29 @@ export default function CatStudio() {
     if (!target) { appliedHomeQuestion.current = null; return; }
     const token = `${target.conversationId}\0${target.petId ?? ''}`;
     if (appliedHomeQuestion.current === token) return;
-    if (target.petId) {
-      if (!pets) return;
-      if (pets.some(item => item.id === target.petId) && pet?.id !== target.petId) { void selectSavedPet(target.petId); return; }
-    }
-    appliedHomeQuestion.current = token;
-    setFocusThread(target.conversationId);
-    setChatOpen(true);
-    router.setParams({ conversationId: '', petId: '' });
-  }, [focused, requestedConversationId, requestedPetId, pet?.id, pets, selectSavedPet]);
+    let live = true;
+    void (async () => {
+      let petToOpen = target.petId;
+      if (companion.demo && pets) {
+        const found = await findDemoConversation(target.conversationId);
+        if (!live) return;
+        const resolved = conversationOpenPet({ conversationPetId: found?.petId, requestedPetId: target.petId, knownPetIds: pets.map(item => item.id) });
+        if (resolved) petToOpen = resolved;
+      }
+      if (!live) return;
+      if (petToOpen) {
+        if (!pets) return;
+        if (pets.some(item => item.id === petToOpen) && pet?.id !== petToOpen) { void selectSavedPet(petToOpen); return; }
+      }
+      appliedHomeQuestion.current = token;
+      setFocusThread(target.conversationId);
+      setChatOpen(true);
+      router.setParams({ conversationId: '', petId: '' });
+    })();
+    return () => { live = false; };
+  }, [focused, requestedConversationId, requestedPetId, pet?.id, pets, selectSavedPet, companion.demo]);
   const [picker, setPicker] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
-  const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState(false), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
+  const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState(false), [movingId, setMovingId] = useState<string | null>(null), [movePetId, setMovePetId] = useState(''), [speaking, setSpeaking] = useState(false), [petting, setPetting] = useState(false);
   const [active, setActive] = useState<CompanionConversation | null>(null);
   const generation = useRef(0), requestId = useRef(newRequestId()), speechGeneration = useRef(0), mounted = useRef(true), threadRef = useRef<ScrollView>(null);
   const pending = useQuery({
@@ -92,7 +105,7 @@ export default function CatStudio() {
   const mood: CatMood = speaking ? 'speaking' : thinking ? 'thinking' : petting ? 'happy' : message ? 'listening' : 'idle';
   const stopSpeech = useCallback(() => { speechGeneration.current++; void Speech.stop(); setSpeaking(false); }, []);
   useEffect(() => {
-    generation.current++; setActive(null); setMessage(''); setError(''); setNotice(''); setBusy(false); setRemoving(false); stopSpeech(); requestId.current = newRequestId();
+    generation.current++; setActive(null); setMessage(''); setError(''); setNotice(''); setBusy(false); setRemoving(false); setMovingId(null); setMovePetId(''); stopSpeech(); requestId.current = newRequestId();
   }, [pet?.id, stopSpeech]);
   useEffect(() => {
     mounted.current = true; const requests = generation, voice = speechGeneration;
@@ -139,6 +152,25 @@ export default function CatStudio() {
   const selectPet = async (id: string) => { try { await companion.selectPet(id); setPicker(false); } catch { setError('아이를 바꾸지 못했어요. 다시 선택해 주세요.'); } };
   const closeChat = useCallback(() => { setChatOpen(false); setFocusThread(null); stopSpeech(); }, [stopSpeech]);
   const navigateFromChat = (path: Href) => { closeChat(); router.push(path); };
+  const otherPets = (pets ?? []).filter(item => item.id !== pet?.id);
+  const startMove = (id: string) => {
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))); return; }
+    if (!otherPets.length) return;
+    setMovingId(id); setMovePetId(otherPets[0].id); setError('');
+  };
+  const cancelMove = () => { setMovingId(null); setMovePetId(''); setError(''); };
+  const saveMove = async (id: string) => {
+    if (!otherPets.some(item => item.id === movePetId)) { setError(errorMessage(new Error('INVALID_CONVERSATION_PET'))); return; }
+    const nextPetId = movePetId;
+    setRemoving(true); setError('');
+    try {
+      await companion.moveConversation(id, nextPetId);
+      setMovingId(null); setMovePetId('');
+      setActive(prev => prev?.id === id ? null : prev);
+      setFocusThread(id);
+      await selectSavedPet(nextPetId);
+    } catch (cause) { setError(errorMessage(cause)); } finally { setRemoving(false); }
+  };
   const removeTurn = (id: string) => {
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_ACCOUNT_READONLY'))); return; }
     const execute = () => {
@@ -198,7 +230,7 @@ export default function CatStudio() {
           <View style={styles.pickerHeader}><Text style={styles.headerTitle}>글로 대화하기</Text><Pressable accessibilityRole="button" accessibilityLabel="대화 접기" onPress={closeChat} style={styles.iconButton}><MewIcon name="close" /></Pressable></View>
           <View style={styles.bubbleHeader}><Text style={styles.bubbleLabel}>{companion.demo ? '기기 내 체험 · 실제 AI 답변 아님' : answer ? '기록을 바탕으로 한 AI 답변' : '오늘의 대화'}</Text>{thinking && <ActivityIndicator size="small" color={c.accent} />}{answer && <Pressable accessibilityRole="button" accessibilityLabel={speaking ? '최근 답변 읽기 정지' : '최근 답변 소리로 듣기'} onPress={() => void readAnswer()} style={styles.audioButton}><Ionicons name={speaking ? 'stop-circle-outline' : 'volume-medium-outline'} size={20} color={c.accent} /></Pressable>}</View>
           <ScrollView ref={threadRef} style={{ maxHeight: keyboard ? 140 : Math.min(420, Math.max(180, Math.round(height * 0.46))) }} contentContainerStyle={{ paddingBottom: 8, gap: 16 }} accessibilityLiveRegion="polite" onContentSizeChange={() => { if (!focusThread) threadRef.current?.scrollToEnd({ animated: false }); }}>
-            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} focusId={focusThread} onFocusOffset={y => threadRef.current?.scrollTo({ y, animated: false })} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={(id, turnId) => navigateFromChat(citedObservationHref(id, turnId, pet?.id, 'home'))} onCheckin={(id, turnId) => navigateFromChat(citedCheckinHref(id, turnId, pet?.id, 'home'))} demo={companion.demo} deleting={removing} onDelete={removeTurn} />
+            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} focusId={focusThread} onFocusOffset={y => threadRef.current?.scrollTo({ y, animated: false })} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={(id, turnId) => navigateFromChat(citedObservationHref(id, turnId, pet?.id, 'home'))} onCheckin={(id, turnId) => navigateFromChat(citedCheckinHref(id, turnId, pet?.id, 'home'))} demo={companion.demo} petsKnown={!!pets} otherPets={otherPets} movingId={movingId} movePetId={movePetId} deleting={removing} onDelete={removeTurn} onStartMove={startMove} onMovePet={id => { if (!removing) setMovePetId(id); }} onSaveMove={id => void saveMove(id)} onCancelMove={cancelMove} />
           </ScrollView>
           {(error || appearance.error || pending.error || savedThreads.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{error || appearance.error || errorMessage(pending.error ?? savedThreads.error ?? companion.pets.error)}</Text> : null}
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}
@@ -221,7 +253,7 @@ function turnText(turn: HomeConversationTurn) {
   if (turn.status === 'FAILED') return '답변을 준비하지 못했어요. 다시 질문해 주세요.';
   return turn.answer?.trim() || '아직 답변이 준비되지 않았어요.';
 }
-function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin, demo, deleting, onDelete }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void; demo: boolean; deleting: boolean; onDelete: (id: string) => void }) {
+function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin, demo, petsKnown, otherPets, movingId, movePetId, deleting, onDelete, onStartMove, onMovePet, onSaveMove, onCancelMove }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void; demo: boolean; petsKnown: boolean; otherPets: { id: string; name: string }[]; movingId: string | null; movePetId: string; deleting: boolean; onDelete: (id: string) => void; onStartMove: (id: string) => void; onMovePet: (id: string) => void; onSaveMove: (id: string) => void; onCancelMove: () => void }) {
   if (loading) return <Text style={styles.bubbleText}>이전 대화를 확인하고 있어요.</Text>;
   if (failed) return <Text style={styles.bubbleText}>이전 대화를 불러오지 못했어요.</Text>;
   if (!turns.length && !thinking) return <Text style={styles.bubbleText}>{petName ? `${petName}와 어떤 이야기를 나눠 볼까요?` : '반가워요. 나만의 고양이를 만나 보세요.'}</Text>;
@@ -232,8 +264,17 @@ function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocu
       {(turn.citedObservationIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={id} onPress={() => onObservation(id, turn.id)} style={styles.citation}><Text style={styles.citationText}>참고한 기록 {index + 1} 보기 →</Text></Pressable>)}
       {(turn.citedCheckinIds ?? []).map((id, index) => <Pressable accessibilityRole="link" key={`checkin-${id}`} onPress={() => onCheckin(id, turn.id)} style={styles.citation}><Text style={styles.citationText}>{homeCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
       {demo ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={() => onDelete(turn.id)} style={styles.citation}><Text style={styles.deleteText}>이 대화 삭제</Text></Pressable> : null}
+      {demo && otherPets.length > 0 ? movingId === turn.id ? <View>
+        <Text style={styles.turnQuestion}>어느 아이의 기록인가요</Text>
+        <Text style={styles.accountNote}>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Text>
+        <View style={styles.moveRow}>{otherPets.map(item => <Pressable accessibilityRole="button" accessibilityState={{ selected: movePetId === item.id, disabled: deleting }} disabled={deleting} key={item.id} onPress={() => onMovePet(item.id)} style={styles.citation}><Text style={styles.citationText}>{movePetId === item.id ? `✓ ${item.name}` : item.name}</Text></Pressable>)}</View>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting || !otherPets.some(item => item.id === movePetId) }} disabled={deleting || !otherPets.some(item => item.id === movePetId)} onPress={() => onSaveMove(turn.id)} style={styles.citation}><Text style={styles.citationText}>이 아이에게 옮기기</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={onCancelMove} style={styles.citation}><Text style={styles.citationText}>옮기기 취소</Text></Pressable>
+      </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting }} disabled={deleting} onPress={() => onStartMove(turn.id)} style={styles.citation}><Text style={styles.citationText}>다른 아이에게 옮기기</Text></Pressable> : null}
     </View>)}
+    {demo && petsKnown && otherPets.length === 0 && turns.length ? <View><Text style={styles.turnQuestion}>어느 아이의 기록인가요</Text><Text style={styles.accountNote}>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Text><Text style={styles.accountNote}>등록된 다른 아이가 없어서 옮길 수 없어요.</Text></View> : null}
     {!demo && turns.length ? <Text style={styles.accountNote}>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Text> : null}
+    {!demo && turns.length ? <View><Text style={styles.turnQuestion}>어느 아이의 기록인가요</Text><Text style={styles.accountNote}>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Text><Text style={styles.accountNote}>이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Text></View> : null}
     {thinking && !turns.some(turn => turn.status === 'QUEUED') ? <Text style={styles.bubbleText}>남겨 준 기록을 살펴보고 있어요.</Text> : null}
   </View>;
 }
@@ -265,7 +306,7 @@ const styles = StyleSheet.create({
   chatBackdrop: { flex: 1, backgroundColor: '#17251C55', justifyContent: 'flex-end', alignItems: 'center' },
   conversation: { width: '100%', maxWidth: 640, paddingHorizontal: 22, paddingTop: 12, paddingBottom: 12, backgroundColor: c.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
   bubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 }, bubbleLabel: { fontSize: 11, fontWeight: '600', color: c.accent, flex: 1 }, bubbleText: { fontSize: 16, lineHeight: 24, color: c.ink }, turnQuestion: { color: c.accent, fontSize: 14, lineHeight: 22, marginBottom: 4 },
-  audioButton: { padding: 12, minWidth: 44, minHeight: 44 }, citation: { paddingVertical: 12, minHeight: 44 }, citationText: { fontSize: 13, color: c.accent, fontWeight: '600' }, deleteText: { fontSize: 13, color: c.error, fontWeight: '600' }, accountNote: { fontSize: 12, color: c.muted, lineHeight: 18, marginTop: 4 },
+  audioButton: { padding: 12, minWidth: 44, minHeight: 44 }, citation: { paddingVertical: 12, minHeight: 44 }, citationText: { fontSize: 13, color: c.accent, fontWeight: '600' }, deleteText: { fontSize: 13, color: c.error, fontWeight: '600' }, accountNote: { fontSize: 12, color: c.muted, lineHeight: 18, marginTop: 4 }, moveRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   error: { fontSize: 12, color: c.error, lineHeight: 18, marginBottom: 6 }, notice: { color: c.accent, fontSize: 12, marginTop: 6 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, paddingLeft: 14, backgroundColor: c.background, borderRadius: 20, borderWidth: 1, borderColor: c.border, marginTop: 10 },
   input: { flex: 1, minHeight: 40, color: c.ink, fontSize: 14, paddingVertical: 8 }, send: { width: 44, height: 44, borderRadius: 15, backgroundColor: c.accent, justifyContent: 'center', alignItems: 'center' },

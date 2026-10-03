@@ -1,6 +1,6 @@
 import type { CompanionCheckin, CompanionConversation, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, type FeedbackRecord } from './demo';
-import { deleteDemoConversation } from './conversationStore';
+import { conversationOpenPet, deleteDemoConversation, findDemoConversation, moveDemoConversation } from './conversationStore';
 import { diaryConversationRows } from './diaryTimeline';
 import { homeConversationThread } from './homeConversation';
 import { errorMessage } from '../../lib/api';
@@ -56,4 +56,67 @@ it('does not invent an account delete', async () => {
   });
   expect(errorMessage(new Error('CONVERSATION_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.');
   expect((await getDemo()).conversations).toHaveLength(1);
+});
+
+it('moves one saved conversation to another existing cat and keeps the id, turns, and citations', async () => {
+  const answer = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const kept = turn('thread-keep', 'demo-momo', '나중에 남긴 질문', '2026-09-03T00:00:00Z');
+  const moved = turn('thread-wrong', 'demo-momo', '잘못 저장한 질문', '2026-09-02T00:00:00Z');
+  moved.answer = answer;
+  const other = turn('thread-other', 'demo-nabi', '다른 아이 질문', '2026-09-02T12:00:00Z');
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [observation('obs-1'), observation('obs-2', 'demo-nabi')];
+    data.feedback = [reaction('on-1', 'obs-1')];
+    data.checkins = [checkin()];
+    data.conversations = [kept, moved, other];
+  });
+  const result = await moveDemoConversation('thread-wrong', '  demo-nabi  ');
+  const state = await getDemo();
+  const stored = await findDemoConversation('thread-wrong');
+  expect(result).toEqual({ ...moved, petId: 'demo-nabi' });
+  expect(stored).toEqual({ ...moved, petId: 'demo-nabi' });
+  expect(stored?.answer).toBe(answer);
+  expect(state.conversations.find(item => item.id === 'thread-wrong')).toEqual(stored);
+  expect(state.conversations.filter(item => item.petId === 'demo-momo').map(item => item.id)).toEqual(['thread-keep']);
+  expect(state.conversations.filter(item => item.petId === 'demo-nabi').map(item => item.id).sort()).toEqual(['thread-other', 'thread-wrong']);
+  expect(homeConversationThread(state.conversations, 'demo-nabi').map(item => item.id)).toEqual(['thread-wrong', 'thread-other']);
+  expect(homeConversationThread(state.conversations, 'demo-momo').map(item => item.id)).toEqual(['thread-keep']);
+  expect(diaryConversationRows(state.conversations, 'demo-nabi').map(item => item.id)).toEqual(['conversation-thread-wrong', 'conversation-thread-other']);
+  expect(diaryConversationRows(state.conversations, 'demo-momo').map(item => item.id)).toEqual(['conversation-thread-keep']);
+  expect(diaryConversationRows(state.conversations, 'demo-nabi').find(item => item.id === 'conversation-thread-wrong')?.target).toBe('/(tabs)/conversation?conversationId=thread-wrong');
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  expect(state.observations.map(item => item.id)).toEqual(['obs-1', 'obs-2']);
+  expect(state.feedback.map(item => item.id)).toEqual(['on-1']);
+  expect(state.checkins.map(item => item.id)).toEqual(['care-1']);
+  expect(state.conversations.find(item => item.id === 'thread-keep')).toEqual(kept);
+  expect(state.conversations.find(item => item.id === 'thread-other')).toEqual(other);
+  expect(conversationOpenPet({ conversationPetId: stored?.petId, requestedPetId: 'demo-momo', knownPetIds: state.pets.map(item => item.id) })).toBe('demo-nabi');
+  await deleteDemoConversation('thread-wrong');
+  expect(await findDemoConversation('thread-wrong')).toBeNull();
+  expect((await getDemo()).conversations.map(item => item.id).sort()).toEqual(['thread-keep', 'thread-other']);
+});
+
+it('rejects a conversation move to the same cat, a missing cat, or an account and does not invent a pet', async () => {
+  const saved = turn('thread-wrong', 'demo-momo', '잘못 저장한 질문', '2026-09-02T00:00:00Z');
+  await changeDemo(data => { data.conversations = [saved]; });
+  await expect(moveDemoConversation('thread-wrong', 'demo-momo')).rejects.toThrow('INVALID_CONVERSATION_PET');
+  await expect(moveDemoConversation('thread-wrong', '   ')).rejects.toThrow('INVALID_CONVERSATION_PET');
+  await expect(moveDemoConversation('thread-wrong', 'demo-made-up')).rejects.toThrow('NOT_FOUND');
+  await expect(moveDemoConversation('missing', 'demo-momo')).rejects.toThrow('NOT_FOUND');
+  const before = await getDemo();
+  expect(before.pets.map(item => item.id)).toEqual(['demo-momo']);
+  expect(before.conversations).toEqual([saved]);
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(moveDemoConversation('thread-wrong', 'demo-nabi')).rejects.toThrow('CONSENT_REQUIRED');
+  const state = await getDemo();
+  expect(state.pets).toEqual(before.pets);
+  expect(state.conversations).toEqual([saved]);
+  expect(await findDemoConversation('thread-wrong')).toEqual(saved);
+  expect(await findDemoConversation('   ')).toBeNull();
+  expect(conversationOpenPet({ conversationPetId: 'demo-made-up', requestedPetId: 'demo-momo', knownPetIds: ['demo-momo'] })).toBe('demo-momo');
+  expect(conversationOpenPet({ conversationPetId: null, requestedPetId: '  ', knownPetIds: ['demo-momo'] })).toBeNull();
+  expect(conversationOpenPet({ conversationPetId: 'demo-nabi', requestedPetId: 'demo-momo', knownPetIds: [] })).toBeNull();
+  expect(errorMessage(new Error('INVALID_CONVERSATION_PET'))).toBe('옮길 아이를 확인해 주세요.');
+  expect(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });

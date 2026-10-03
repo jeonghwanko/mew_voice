@@ -6,6 +6,7 @@ import type { CompanionConversation } from '@findthem/shared';
 import { Body, Button, Card, Chip, Empty, ErrorNote, Field, Heading, Loading, Screen, s } from '../../src/ui/components';
 import { colors as c } from '../../src/ui/theme';
 import { newRequestId, useCompanion } from '../../src/features/companion/useCompanion';
+import { conversationOpenPet, findDemoConversation } from '../../src/features/companion/conversationStore';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { citedCaresForAnswer, citedReactionsForAnswer, conversationCitedCheckinLink, presentConversationAnswer } from '../../src/features/companion/daily';
 import { citedCheckinHref } from '../../src/features/companion/checkinNavigation';
@@ -25,16 +26,40 @@ export default function Conversation() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [requestId, setRequestId] = useState(newRequestId);
+  const [movingPet, setMovingPet] = useState(false);
+  const [movePetId, setMovePetId] = useState('');
   const appliedConversation = useRef<string | null>(null);
+  const alignedConversation = useRef<string | null>(null);
   const selectedPet = companion.activePet;
   const { selectPet, pets } = companion;
 
   useEffect(() => {
+    if (requestedConversationId?.trim() && companion.demo) return;
     if (requestedPetId && pets.data?.some(pet => pet.id === requestedPetId)) void selectPet(requestedPetId);
-  }, [requestedPetId, pets.data, selectPet]);
+  }, [requestedPetId, requestedConversationId, companion.demo, pets.data, selectPet]);
+  useEffect(() => {
+    const threadId = requestedConversationId?.trim() || '';
+    if (!threadId) { alignedConversation.current = null; return; }
+    if (alignedConversation.current === threadId) return;
+    if (!pets.data) return;
+    let live = true;
+    void (async () => {
+      let petToOpen = requestedPetId;
+      if (companion.demo) {
+        const found = await findDemoConversation(threadId);
+        if (!live) return;
+        const resolved = conversationOpenPet({ conversationPetId: found?.petId, requestedPetId, knownPetIds: pets.data.map(pet => pet.id) });
+        if (resolved) petToOpen = resolved;
+      }
+      if (!live) return;
+      if (petToOpen && pets.data.some(pet => pet.id === petToOpen) && selectedPet?.id !== petToOpen) { void selectPet(petToOpen); return; }
+      alignedConversation.current = threadId;
+    })();
+    return () => { live = false; };
+  }, [companion.demo, requestedConversationId, requestedPetId, pets.data, selectedPet?.id, selectPet]);
   useEffect(() => {
     appliedConversation.current = null;
-    setActive(null); setMessage(''); setRequestId(newRequestId()); setError('');
+    setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); setMovingPet(false); setMovePetId('');
   }, [selectedPet?.id]);
 
   const history = useQuery({
@@ -82,6 +107,29 @@ export default function Conversation() {
   const shownAnswer = (answer: string | null | undefined, checkinIds?: readonly string[], observationIds?: readonly string[]) => presentConversationAnswer(answer, citedCaresForAnswer(checkinIds, careMoments), citedReactionsForAnswer(observationIds, reactionMoments));
   const answerText = shownAnswer(current?.answer, current?.citedCheckinIds, current?.citedObservationIds);
 
+  const otherPets = (companion.pets.data ?? []).filter(pet => pet.id !== (current?.petId ?? selectedPet?.id));
+  const startMove = () => {
+    if (!current) return;
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_PET_ACCOUNT_READONLY'))); return; }
+    const choices = (companion.pets.data ?? []).filter(pet => pet.id !== current.petId);
+    if (!choices.length) return;
+    setMovingPet(true); setMovePetId(choices[0].id); setError('');
+  };
+  const cancelMove = () => { setMovingPet(false); setMovePetId(''); setError(''); };
+  const saveMove = async () => {
+    if (!current) return;
+    if (!otherPets.some(pet => pet.id === movePetId)) { setError(errorMessage(new Error('INVALID_CONVERSATION_PET'))); return; }
+    const id = current.id;
+    const nextPetId = movePetId;
+    setBusy(true); setError('');
+    try {
+      await companion.moveConversation(id, nextPetId);
+      setMovingPet(false); setMovePetId('');
+      router.setParams({ conversationId: id, petId: nextPetId });
+      await companion.selectPet(nextPetId);
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+
   const removeThis = () => {
     if (!current) return;
     if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_ACCOUNT_READONLY'))); return; }
@@ -122,6 +170,15 @@ export default function Conversation() {
         {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedCheckinHref(id, current.id, selectedPet.id))}><Text style={styles.link}>{conversationCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
         {companion.demo ? <Button title="이 대화 삭제" danger disabled={busy} onPress={removeThis} /> : <Body muted>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Body>}
       </Card>}
+      {current ? <Card>
+        <Heading>어느 아이의 기록인가요</Heading>
+        <Body muted>이미 등록한 다른 아이에게만 옮겨요. 같은 대화의 질문과 답변, 답 안의 인용은 그대로 두어요. 새 아이를 만들거나 AI로 분석하지 않아요.</Body>
+        {companion.demo ? !companion.pets.data ? null : otherPets.length === 0 ? <Body muted>등록된 다른 아이가 없어서 옮길 수 없어요.</Body> : movingPet ? <>
+          <View style={s.row}>{otherPets.map(pet => <Chip key={pet.id} label={pet.name} selected={movePetId === pet.id} onPress={() => { if (!busy) setMovePetId(pet.id); }} />)}</View>
+          <Button title="이 아이에게 옮기기" busy={busy} disabled={busy || !otherPets.some(pet => pet.id === movePetId)} onPress={() => void saveMove()} />
+          <Button title="옮기기 취소" secondary disabled={busy} onPress={cancelMove} />
+        </> : <Button title="다른 아이에게 옮기기" secondary disabled={busy} onPress={startMove} /> : <Body muted>이 계정에 남긴 대화는 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
+      </Card> : null}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
       {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => setActive(item)} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>; })}
