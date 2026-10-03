@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<flow-definition plugin="workflow-job">
+  <description>우리 아이 · office-stable / svl-mac-01. Android Google Play internal draft + iOS App Store Connect upload. Source of truth: deploy/jenkins/Jenkinsfile.mobile (sync with jenkins.mjs).</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <org.jenkinsci.plugins.workflow.job.properties.DisableConcurrentBuildsJobProperty/>
+    <hudson.model.ParametersDefinitionProperty><parameterDefinitions><hudson.model.StringParameterDefinition><name>SRC_GIT_URL</name><description>Standalone mew_voice Git URL</description><defaultValue>https://github.com/jeonghwanko/mew_voice.git</defaultValue></hudson.model.StringParameterDefinition><hudson.model.StringParameterDefinition><name>SRC_GIT_COMMIT</name><description>Source branch or full commit SHA</description><defaultValue>master</defaultValue></hudson.model.StringParameterDefinition>
+<hudson.model.ChoiceParameterDefinition><name>BUILD_TARGET</name><description>Native release artifacts</description><choices class="java.util.Arrays$ArrayList"><a class="string-array"><string>both</string><string>android</string><string>ios</string></a></choices></hudson.model.ChoiceParameterDefinition>
+<hudson.model.StringParameterDefinition><name>STORE_BUILD_NUMBER</name><description>Optional build number; default previous durable reservation + 1</description><defaultValue></defaultValue></hudson.model.StringParameterDefinition>
+<hudson.model.StringParameterDefinition><name>REPLACE_INTERNAL_DRAFT_VERSION</name><description>Exact inspected Play draft versionCode to replace</description><defaultValue></defaultValue></hudson.model.StringParameterDefinition>
+<hudson.model.BooleanParameterDefinition><name>SCREENSHOTS_ONLY</name><description>Native simulator screenshots only</description><defaultValue>false</defaultValue></hudson.model.BooleanParameterDefinition>
+<hudson.model.BooleanParameterDefinition><name>ANDROID_PUBLISH_TO_GOOGLEPLAY</name><description>Upload Play internal draft</description><defaultValue>true</defaultValue></hudson.model.BooleanParameterDefinition>
+<hudson.model.BooleanParameterDefinition><name>IOS_UPLOAD_TO_TESTFLIGHT</name><description>Upload TestFlight</description><defaultValue>true</defaultValue></hudson.model.BooleanParameterDefinition></parameterDefinitions></hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps">
+    <!-- jenkins.mjs sync inserts the validated Jenkinsfile.mobile here. -->
+    <script>error('Use node deploy/jenkins/jenkins.mjs sync to install this job')</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

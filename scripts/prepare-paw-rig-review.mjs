@@ -1,0 +1,21 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+const root=path.resolve('.'),src=path.join(root,'assets/avatar/references/paw-pad-fit'),out=path.join(root,'dist/web/cat-paw-rig');
+await fs.mkdir(out,{recursive:true});await fs.cp(path.join(root,'dist/web/cat-motion/vendor'),path.join(out,'vendor'),{recursive:true});
+await fs.copyFile(path.join(src,'paw-pads-fitted.glb'),path.join(out,'paw-fit2.glb'));
+await fs.writeFile(path.join(out,'index.html'),`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발바닥·발가락 리그 연구</title><style>body{margin:0;background:#eeeae3;color:#293b37;font:16px system-ui}header{padding:18px}h1{font-size:23px;margin:0 0 8px}p{margin:8px 0;line-height:1.6}canvas{display:block;width:100%;height:68vh}button{padding:10px 16px;margin:4px;border:1px solid #bbc6be;border-radius:8px;background:white;font:inherit}label{display:inline-block;margin:8px}input{width:240px}#status{font-size:14px}</style><header><h1>발바닥 밀착 · 발가락 벌리기</h1><p>발마다 작은 패드 4개와 중앙 패드. 발가락을 살짝 벌렸다 되돌리는 별도 리그 연구입니다.</p><button id="top">위·사선</button><button id="sole">발바닥</button><button id="play">재생 / 정지</button><label>자세 <input id="time" type="range" min="0" max="1.5" step="0.01" value="0"></label><p id="status">GLB 로딩 중…</p></header><canvas id="view"></canvas><header><p>드래그로 회전 · 스크롤로 확대. 골반의 앉기↔서기와는 아직 연결하지 않았습니다. 패드 크기·돌출 깊이와 피부 가중치를 조정했습니다. 체중에 따른 접촉·압축은 아직 구현하지 않았습니다.</p><a href="/cat-haunch-toes/index.html?review=anatomy3">이전 정지 조형</a></header><script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script><script type="module" src="review.js?v=fit2"></script></html>`);
+await fs.writeFile(path.join(out,'review.js'),`import * as THREE from 'three';
+import {GLTFLoader} from './vendor/loaders/GLTFLoader.js';
+import {OrbitControls} from './vendor/controls/OrbitControls.js';
+const canvas=document.querySelector('#view'),renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene=new THREE.Scene();scene.background=new THREE.Color('#eeeae3');const camera=new THREE.PerspectiveCamera(32,1,.01,100);camera.up.set(0,0,1);camera.position.set(1,-1.6,.65);
+const controls=new OrbitControls(camera,canvas);controls.target.set(0,-.23,.20);controls.enableDamping=true;controls.minDistance=.25;controls.maxDistance=4;
+scene.add(new THREE.HemisphereLight(0xffffff,0x777777,2));for(const pos of [[1,-2,3],[-1,1,-2]]){const l=new THREE.DirectionalLight(0xffffff,2);l.position.set(...pos);scene.add(l);}
+let mixer,playing=false,elapsed=0;const clock=new THREE.Clock();
+new GLTFLoader().load('./paw-fit2.glb',g=>{const wrapper=new THREE.Group();wrapper.rotation.x=Math.PI/2;wrapper.add(g.scene);scene.add(wrapper);for(const clip of g.animations){const start=Math.min(...clip.tracks.map(t=>t.times[0]));for(const track of clip.tracks)track.times=Float32Array.from(track.times,t=>t-start);clip.resetDuration();}mixer=new THREE.AnimationMixer(g.scene);for(const clip of g.animations)mixer.clipAction(clip).play();mixer.setTime(0);document.querySelector('#status').textContent='로드 완료 · '+g.animations.length+'개 애니메이션 클립 · 최대 4도 벌림';window.pawReview={mixer,scene:g.scene,clips:g.animations};},undefined,()=>{document.querySelector('#status').textContent='모델 로드 실패';});
+document.querySelector('#play').onclick=()=>playing=!playing;document.querySelector('#time').oninput=e=>{playing=false;elapsed=Number(e.target.value);mixer?.setTime(elapsed);};
+document.querySelector('#top').onclick=()=>{controls.target.set(0,-.23,.20);camera.up.set(0,0,1);camera.position.set(1,-1.6,.65);};document.querySelector('#sole').onclick=()=>{controls.target.set(0,-.28,.07);camera.position.set(0,-.29,-1.1);};
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();
+renderer.setAnimationLoop(()=>{const dt=clock.getDelta();if(playing&&mixer){elapsed=(elapsed+dt)%1.5;mixer.setTime(elapsed);document.querySelector('#time').value=elapsed;}controls.update();renderer.render(scene,camera);});
+`);
+process.stdout.write('http://localhost:8092/cat-paw-rig/index.html\n');

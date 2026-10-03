@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>고양이 기록 · 사진과 울음 관찰 흐름</title>
+    <style>
+      :root {
+        --ink: #102d3a;
+        --deep: #0a1b24;
+        --paper: #f7f3eb;
+        --cream: #fffdf8;
+        --line: #d8e2df;
+        --sky: #74bdd2;
+        --sky-deep: #2e819a;
+        --mint: #bfe6d6;
+        --warm: #f2d1a8;
+        --muted: #60747a;
+        --danger: #c74d48;
+        --shadow: 0 22px 48px rgba(12, 39, 48, .15), 0 5px 13px rgba(12, 39, 48, .08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Pretendard", "SUIT", "Noto Sans KR", system-ui, sans-serif;
+        background: radial-gradient(circle at 12% 0%, #d2edf0 0, transparent 30rem), #edf1ec;
+        line-height: 1.45;
+      }
+      .page { max-width: 1460px; margin: 0 auto; padding: 54px 28px 72px; }
+      .intro { max-width: 760px; margin-bottom: 38px; }
+      .eyebrow { color: var(--sky-deep); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      h1 { font-size: clamp(29px, 4.6vw, 50px); line-height: 1.15; letter-spacing: -.055em; margin: 10px 0 16px; }
+      .intro p { color: #4d666b; font-size: 16px; margin: 0; }
+      .rule { display: inline-flex; gap: 8px; align-items: center; margin-top: 17px; padding: 8px 11px; background: #eef7f3; border: 1px solid #cde5db; border-radius: 999px; color: #336456; font-size: 12px; font-weight: 700; }
+      .rule svg { width: 15px; height: 15px; }
+      .frames { display: grid; grid-template-columns: repeat(4, minmax(260px, 1fr)); gap: 25px; align-items: start; }
+      .flow-label { display: flex; align-items: center; gap: 8px; margin: 0 0 10px 4px; color: #41606a; font-size: 13px; font-weight: 800; }
+      .flow-label b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 11px; }
+      .phone { width: 100%; max-width: 334px; margin: 0 auto; padding: 8px; border-radius: 42px; background: #0c171d; box-shadow: var(--shadow); }
+      .screen { min-height: 690px; overflow: hidden; position: relative; border-radius: 35px; background: var(--paper); }
+      .status { height: 40px; display: flex; justify-content: space-between; align-items: center; padding: 11px 20px 0; font-size: 11px; font-weight: 800; }
+      .icons { display: flex; gap: 5px; align-items: center; }
+      .dot { width: 12px; height: 7px; border: 1.5px solid currentColor; border-radius: 2px; }
+      .screen-body { padding: 6px 18px 90px; }
+      .topline { display: flex; align-items: center; justify-content: space-between; min-height: 39px; }
+      .brand { font-weight: 850; letter-spacing: -.04em; font-size: 17px; }
+      .pet-switch { display: flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12px; font-weight: 800; }
+      .mini-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,.75); }
+      .hero { margin: 17px -18px 17px; min-height: 188px; padding: 25px 20px; color: white; position: relative; overflow: hidden; background: var(--ink); }
+      .hero img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; opacity: .95; }
+      .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,25,34,.92) 0%, rgba(7,25,34,.52) 45%, rgba(7,25,34,.04)); }
+      .hero-copy { position: relative; z-index: 1; width: 58%; }
+      .hero h2 { margin: 6px 0; font-size: 24px; line-height: 1.15; letter-spacing: -.055em; }
+      .hero p { margin: 0; font-size: 12px; color: #d7eaed; }
+      h3 { font-size: 14px; margin: 19px 0 10px; letter-spacing: -.035em; }
+      .record-options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+      .option { min-height: 96px; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--cream); }
+      .option .iconbox { width: 30px; height: 30px; display: grid; place-items: center; background: #e9f6f7; border-radius: 10px; color: var(--sky-deep); }
+      .option strong { display: block; margin-top: 9px; font-size: 13px; letter-spacing: -.04em; }
+      .option small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+      .recent { display: flex; gap: 9px; padding: 11px; border: 1px solid var(--line); border-radius: 15px; background: #fffdf9; }
+      .recent-thumb { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 11px; object-fit: cover; }
+      .recent strong, .recent span { display: block; font-size: 11px; }
+      .recent span { color: var(--muted); margin-top: 2px; }
+      .tabbar { position: absolute; right: 0; bottom: 0; left: 0; height: 72px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #e5e9e3; background: rgba(255,253,248,.96); }
+      .tab { display: grid; justify-items: center; gap: 3px; color: #819093; font-size: 9px; font-weight: 700; }
+      .tab.active { color: var(--sky-deep); }
+      .navicon { width: 20px; height: 20px; display: grid; place-items: center; font-size: 17px; line-height: 1; }
+      .back { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 50%; background: #edf5f1; color: var(--ink); font-size: 18px; }
+      .progress { color: var(--muted); font-size: 11px; font-weight: 700; }
+      .modal-title { margin: 20px 0 4px; font-size: 25px; line-height: 1.15; letter-spacing: -.06em; }
+      .lede { margin: 0; color: var(--muted); font-size: 12px; }
+      .choice { display: flex; align-items: center; gap: 12px; margin-top: 19px; padding: 14px; border: 1.5px solid var(--line); border-radius: 17px; background: var(--cream); }
+      .choice.selected { border-color: var(--sky-deep); background: #effbfc; box-shadow: inset 0 0 0 1px var(--sky-deep); }
+      .large-icon { width: 43px; height: 43px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 14px; background: #d9f0f2; color: #237087; font-size: 21px; }
+      .choice strong { display: block; font-size: 14px; letter-spacing: -.04em; }
+      .choice span { display: block; color: var(--muted); margin-top: 2px; font-size: 11px; }
+      .check { width: 19px; height: 19px; margin-left: auto; display: grid; place-items: center; border-radius: 50%; background: var(--sky-deep); color: #fff; font-size: 11px; }
+      .upload-zone { margin-top: 18px; min-height: 160px; padding: 16px; display: grid; place-items: center; text-align: center; border: 1.5px dashed #94bdc1; border-radius: 18px; background: #f0f7f4; }
+      .upload-zone b { display: block; margin-top: 8px; font-size: 13px; }
+      .upload-zone span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+      .textarea { margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: #fffefb; color: #617378; font-size: 12px; }
+      .textarea b { display: block; color: var(--ink); margin-bottom: 5px; font-size: 11px; }
+      .cta { width: 100%; min-height: 46px; border: 0; border-radius: 14px; background: var(--ink); color: #fff; font: inherit; font-size: 13px; font-weight: 800; }
+      .bottom-action { position: absolute; bottom: 89px; left: 18px; right: 18px; }
+      .recording-stage { min-height: 218px; margin: 27px -18px 12px; padding: 27px 20px; color: #fff; text-align: center; background: linear-gradient(145deg, #123946, #0c2631); }
+      .recording-stage p { color: #bbd6d8; font-size: 12px; margin: 7px 0 15px; }
+      .timer { font-variant-numeric: tabular-nums; font-size: 31px; font-weight: 850; letter-spacing: .02em; }
+      .wave { height: 57px; display: flex; justify-content: center; align-items: center; gap: 4px; }
+      .wave i { width: 4px; display: block; border-radius: 4px; background: #90d7dd; }
+      .wave i:nth-child(1), .wave i:nth-child(11) { height: 11px; }.wave i:nth-child(2), .wave i:nth-child(10) { height: 22px; }.wave i:nth-child(3), .wave i:nth-child(9) { height: 35px; }.wave i:nth-child(4), .wave i:nth-child(8) { height: 19px; }.wave i:nth-child(5), .wave i:nth-child(7) { height: 47px; }.wave i:nth-child(6) { height: 29px; }
+      .record-button { width: 72px; height: 72px; margin: 13px auto 0; display: grid; place-items: center; border: 8px solid rgba(255,255,255,.24); border-radius: 50%; background: #f47d72; box-shadow: 0 0 0 1px rgba(255,255,255,.4); }
+      .stop-square { width: 20px; height: 20px; border-radius: 4px; background: #fff; }
+      .tip { padding: 12px; display: flex; gap: 9px; border-radius: 13px; background: #e8f1ec; color: #426158; font-size: 11px; }
+      .tip b { flex: 0 0 auto; color: #257062; }
+      .result-card { margin-top: 18px; padding: 15px; border: 1px solid #cfe0dc; border-radius: 18px; background: #fffefb; }
+      .result-tag { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px; color: #246f82; background: #e3f5f7; font-size: 10px; font-weight: 800; }
+      .result-card h2 { margin: 10px 0 6px; font-size: 20px; line-height: 1.18; letter-spacing: -.055em; }
+      .result-card p { margin: 0; color: #4e666b; font-size: 12px; }
+      .signal { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 9px 0; border-bottom: 1px solid #e7ede9; font-size: 11px; }
+      .signal:last-of-type { border-bottom: 0; }
+      .signal span { color: var(--muted); }
+      .signal b { font-weight: 750; text-align: right; }
+      .limit { margin-top: 11px; padding: 10px; border-left: 3px solid #d2a962; background: #fff7e5; color: #765c2e; font-size: 10px; }
+      .conversation { margin-top: 12px; padding: 12px; border-radius: 15px; background: #eaf3f0; }
+      .conversation .quote { color: #41716e; font-size: 10px; font-weight: 800; }
+      .conversation p { margin-top: 5px; color: var(--ink); font-size: 12px; }
+      .frame-note { min-height: 78px; max-width: 334px; margin: 13px auto 0; padding: 0 5px; color: #506970; font-size: 12px; }
+      .frame-note b { color: var(--ink); }
+      .desktop { margin-top: 55px; padding: 26px; border: 1px solid rgba(129,159,153,.28); border-radius: 25px; background: rgba(255,255,251,.72); }
+      .desktop h2 { margin: 0; font-size: 18px; letter-spacing: -.04em; }
+      .desktop p { margin: 6px 0 17px; color: var(--muted); font-size: 13px; }
+      .desktop-window { overflow: hidden; border-radius: 16px; box-shadow: 0 12px 30px rgba(15,43,50,.13); border: 1px solid #cfdcd9; background: #f8f5ee; }
+      .browser { height: 34px; display: flex; align-items: center; gap: 5px; padding: 0 13px; background: #e9efeb; }.browser i { width: 8px; height: 8px; border-radius: 50%; background: #afc1bd; }.address { margin-left: 10px; padding: 4px 9px; flex: 1; border-radius: 6px; background: #fff; color: #78908e; font-size: 10px; }
+      .desktop-content { display: grid; grid-template-columns: 235px 1fr 300px; min-height: 270px; }.side { padding: 22px; background: #0d2a35; color: #e2f0ed; }.side strong { display: block; font-size: 16px; }.side a { display: block; margin: 18px 0; color: #aac6c6; font-size: 12px; }.side a.active { color: #fff; font-weight: 800; }.desk-main { padding: 25px; }.desk-main h3 { margin: 0; font-size: 22px; }.desk-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }.desk-action { padding: 15px; border-radius: 15px; border: 1px solid #d3e2de; background: white; font-size: 12px; }.desk-action b { display: block; font-size: 14px; margin-bottom: 3px; }.desk-result { margin: 17px 20px 17px 0; padding: 17px; border-radius: 17px; background: #e5f4f2; }.desk-result b { font-size: 14px; }.desk-result p { margin: 5px 0 0; }.desk-note { padding: 25px 20px; border-left: 1px solid #dce5df; background: #fffefa; }.desk-note b { display: block; font-size: 13px; }.desk-note p { margin-top: 7px; font-size: 11px; }
+      @media (max-width: 1160px) { .frames { grid-template-columns: repeat(2, minmax(260px, 1fr)); } .desktop-content { grid-template-columns: 190px 1fr 240px; } }
+      @media (max-width: 650px) { .page { padding: 31px 16px 50px; }.frames { grid-template-columns: 1fr; gap: 30px; }.desktop { padding: 14px; }.desktop-content { grid-template-columns: 1fr; }.side { display: none; }.desk-note { border-left: 0; border-top: 1px solid #dce5df; }.desk-result { margin-right: 0; } }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="intro">
+        <div class="eyebrow">web · mobile companion flow</div>
+        <h1>사진과 울음으로 시작하는<br />차분한 관찰 대화</h1>
+        <p>입력을 “번역”하지 않습니다. 보이는·들리는 신호와 아이의 기록을 함께 보여주고, 보호자가 다음에 살펴볼 일을 제안합니다.</p>
+        <div class="rule"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> 확정적인 감정·건강 진단이나 사람말 번역을 하지 않아요</div>
+      </section>
+
+      <section class="frames" aria-label="모바일 화면 흐름">
+        <article>
+          <p class="flow-label"><b>1</b> 컴패니언 홈</p>
+          <div class="phone"><div class="screen">
+            <div class="status"><span>9:41</span><span class="icons"><span>▮▮▮</span><span>⌁</span><i class="dot"></i></span></div>
+            <div class="screen-body">
+              <div class="topline"><span class="brand">고양이 기록</span><button class="pet-switch"><img class="mini-avatar" src="../../../apps/mobile/assets/companion/welcome-cat-app.jpg" alt="호두의 프로필" /> 호두⌄</button></div>
+              <section class="hero"><img src="../../../apps/mobile/assets/companion/today-cat-app.jpg" alt="린넨 위에 앉아 있는 크림색 고양이" /><div class="hero-copy"><span class="eyebrow" style="color:#9edbe2">오늘의 관찰</span><h2>호두가<br />무엇을 보냈을까?</h2><p>짧은 기록 하나가 다음 대화의 단서가 돼요.</p></div></section>
+              <h3>지금 남기기</h3><div class="record-options"><div class="option"><div class="iconbox">▧</div><strong>사진으로 보기</strong><small>표정·자세·주변을 함께</small></div><div class="option"><div class="iconbox">◖)))</div><strong>울음 녹음</strong><small>짧게 듣고 신호를 살펴요</small></div></div>
+              <h3>최근 기록</h3><div class="recent"><img class="recent-thumb" src="../../../apps/mobile/assets/companion/quiet-memories-app.jpg" alt="잠든 고양이" /><div><strong>창가에서 길게 울었어요</strong><span>어제 · 다음 관찰을 남겨 주세요</span></div></div>
+            </div><nav class="tabbar" aria-label="하단 탐색"><span class="tab active"><i class="navicon">⌂</i>오늘</span><span class="tab"><i class="navicon">◷</i>기록</span><span class="tab"><i class="navicon">⋯</i>대화</span><span class="tab"><i class="navicon">◯</i>내 정보</span></nav>
+          </div></div>
+          <p class="frame-note"><b>같은 시작점.</b> 사진과 소리를 동등한 입력으로 두고, 고양이 전환과 최근 기록을 첫 화면에서 확인합니다.</p>
+        </article>
+
+        <article>
+          <p class="flow-label"><b>2</b> 사진 선택과 질문</p>
+          <div class="phone"><div class="screen">
+            <div class="status"><span>9:41</span><span class="icons"><span>▮▮▮</span><span>⌁</span><i class="dot"></i></span></div>
+            <div class="screen-body"><div class="topline"><button class="back" aria-label="이전">‹</button><span class="progress">1 / 2 관찰 만들기</span></div>
+              <h2 class="modal-title">어떤 단서를<br />함께 볼까요?</h2><p class="lede">한 번에 하나만 골라 기록의 맥락을 지켜요.</p>
+              <div class="choice selected"><div class="large-icon">▧</div><div><strong>사진으로 관찰하기</strong><span>표정, 자세, 주변 환경을 함께 봐요</span></div><i class="check">✓</i></div>
+              <div class="choice"><div class="large-icon">◖)))</div><div><strong>울음 녹음하기</strong><span>길이와 반복 같은 소리 신호를 살펴요</span></div></div>
+              <div class="upload-zone"><div><div class="large-icon" style="margin:auto">＋</div><b>사진을 올려 주세요</b><span>카메라로 찍거나 파일에서 고를 수 있어요</span></div></div>
+              <div class="textarea"><b>무슨 상황이었나요? <span style="color:#7c9192">선택</span></b>창가를 보고 2~3번 낮게 울었어요.</div>
+            </div><div class="bottom-action"><button class="cta">사진 확인하기</button></div>
+          </div></div>
+          <p class="frame-note"><b>입력 전에 질문을 붙입니다.</b> 사진만으로 단정하지 않도록, 상황을 적을 수 있고 나중에 같은 맥락을 인용할 수 있습니다.</p>
+        </article>
+
+        <article>
+          <p class="flow-label"><b>3</b> 울음 녹음 중</p>
+          <div class="phone"><div class="screen">
+            <div class="status"><span>9:41</span><span class="icons"><span>▮▮▮</span><span>⌁</span><i class="dot"></i></span></div>
+            <div class="screen-body"><div class="topline"><button class="back" aria-label="취소">‹</button><span class="progress">녹음 중</span></div>
+              <div class="recording-stage"><span class="eyebrow" style="color:#9edbe2">호두의 울음</span><div class="timer" aria-live="polite">00:12</div><p>최대 30초 · 주변 대화가 들어가지 않게 해 주세요</p><div class="wave" aria-label="입력 음량이 감지되고 있습니다"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="record-button" aria-label="녹음 중지"><i class="stop-square"></i></div></div>
+              <div class="tip"><b>알림</b><span>울음의 ‘뜻’을 번역하지 않아요. 반복, 간격, 높낮이처럼 들리는 신호를 기록합니다.</span></div>
+              <div class="textarea"><b>지금의 상황 <span style="color:#7c9192">선택</span></b>현관 앞에서 사람을 보고 울기 시작했어요.</div>
+            </div><div class="bottom-action"><button class="cta" style="background:#b64d49">■ 녹음 멈추기</button></div>
+          </div></div>
+          <p class="frame-note"><b>행동 중에도 한계를 알려 줍니다.</b> 시간·입력 상태는 텍스트로도 전달하고, 마이크 거부 시 오디오 파일 선택으로 이어집니다.</p>
+        </article>
+
+        <article>
+          <p class="flow-label"><b>4</b> 관찰 결과와 대화</p>
+          <div class="phone"><div class="screen">
+            <div class="status"><span>9:41</span><span class="icons"><span>▮▮▮</span><span>⌁</span><i class="dot"></i></span></div>
+            <div class="screen-body"><div class="topline"><button class="back" aria-label="기록으로 돌아가기">‹</button><span class="progress">방금 전 · 호두</span></div>
+              <div class="result-card"><span class="result-tag">◖))) 울음 녹음 · 관찰 완료</span><h2>현관 앞의 짧고 반복된 울음</h2><p>들리는 신호와 보호자 메모를 함께 정리했어요.</p>
+                <h3>들린 신호</h3><div class="signal"><span>발성 길이</span><b>짧은 소리 3회</b></div><div class="signal"><span>반복 간격</span><b>약 2초 사이</b></div><div class="signal"><span>메모의 맥락</span><b>현관 앞 · 사람을 봄</b></div>
+                <h3>가능한 해석</h3><p>낯선 자극을 알리거나, 문 쪽의 상황에 반응했을 가능성이 있어요. 같은 시간대와 몸짓을 한 번 더 확인해 보세요.</p><div class="limit"><b>알 수 있는 범위</b><br />이 기록만으로 기분·요구·건강 상태를 확정할 수는 없어요.</div>
+              </div>
+              <div class="conversation"><span class="quote">호두의 지난 기록을 인용함 · 9월 8일</span><p>“창가에서 비슷하게 짧은 울음을 남겼어요.” 이후 반응을 알려주시면 다음 대화에 함께 반영할게요.</p></div>
+            </div><div class="bottom-action"><button class="cta">해 본 행동과 이후 반응 남기기</button></div>
+          </div></div>
+          <p class="frame-note"><b>결과의 순서가 안전장치입니다.</b> 입력 → 신호 → 여러 가능성 → 한계 → 다음 기록 순서로 보여주며, 인용된 과거 기록은 열어 확인할 수 있습니다.</p>
+        </article>
+      </section>
+
+      <section class="desktop" aria-label="데스크톱 반응형 미리보기">
+        <h2>데스크톱에서는 기록과 해석을 나란히</h2><p>웹 `/findthem`은 허브 레이아웃과 분리된 고양이 기록 경험으로, 넓은 화면에서 최근 기록과 이번 관찰을 함께 비교합니다.</p>
+        <div class="desktop-window"><div class="browser"><i></i><i></i><i></i><span class="address">union.pryzm.gg/findthem</span></div><div class="desktop-content"><aside class="side"><strong>고양이 기록</strong><a class="active">오늘의 관찰</a><a>호두의 기록</a><a>대화</a><a>보관과 데이터</a></aside><section class="desk-main"><span class="eyebrow">호두와의 오늘</span><h3>어떤 단서를 함께 볼까요?</h3><div class="desk-actions"><div class="desk-action"><b>▧ 사진으로 관찰</b>자세와 주변 맥락을 남겨요</div><div class="desk-action"><b>◖))) 울음 녹음</b>실제 소리 신호를 살펴요</div></div><div class="desk-result"><b>방금 완료 · 현관 앞의 짧은 울음</b><p>짧은 소리 3회와 보호자 메모를 근거로, 다음에 확인할 행동을 제안했어요.</p></div></section><aside class="desk-note"><b>기록을 해석할 때</b><p>사진과 소리는 단서입니다. 정확한 뜻이나 건강 상태를 단정하지 않고, 확인할 수 있는 다음 관찰을 보여 드려요.</p></aside></div></div>
+      </section>
+    </main>
+  </body>
+</html>

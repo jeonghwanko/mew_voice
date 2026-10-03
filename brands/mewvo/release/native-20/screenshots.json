@@ -1,0 +1,14 @@
+[
+  {
+    "file": "iphone-welcome.png",
+    "device": "iPhone 16 Pro Max",
+    "runtime": "26.2",
+    "source": "native iOS Simulator release build"
+  },
+  {
+    "file": "ipad-welcome.png",
+    "device": "iPad Pro 13-inch (M4)",
+    "runtime": "26.2",
+    "source": "native iOS Simulator release build"
+  }
+]

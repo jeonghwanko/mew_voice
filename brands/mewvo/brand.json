@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "revision": 5,
+  "updatedAt": "2026-09-10",
+  "brandId": "mewvo",
+  "identity": {
+    "status": "approved",
+    "names": {
+      "en": "MewVoice",
+      "ko": "뮤 보이스"
+    },
+    "nicknames": {
+      "ko": "뮤보"
+    },
+    "positioning": {
+      "ko": "고양이와 대화하는 앱"
+    },
+    "decisionSource": "2026-09-10 사용자 대화: 뮤 보이스를 공식 명칭으로 확정. 영문 표기는 제안한 MewVoice로 정리하고 뮤보는 애칭으로 유지. 이전 Mewvo / 뮤보 정식명 결정을 대체."
+  },
+  "productIntent": {
+    "status": "approved-direction",
+    "descriptionKo": "고양이 사진과 울음소리로 대화의 맥락을 살펴보고, 보호자의 말을 고양이 울음소리로 만들어 재생하는 양방향 대화 앱.",
+    "implementationSource": "apps/mobile/PROJECT_STATUS.md"
+  },
+  "copy": {
+    "status": "approved-and-applied-to-store-metadata",
+    "locales": {
+      "ko": {
+        "storeTitle": "뮤 보이스",
+        "tagline": "집사야, 이제 말이 통하냥?",
+        "shortDescription": "고양이의 사진과 울음을 살펴보고, 내 목소리를 재미있는 야옹 소리로 바꿔 보세요."
+      },
+      "en": {
+        "storeTitle": "MewVoice — Talk with your cat",
+        "tagline": "Human, speak meow.",
+        "shortDescription": "Explore photos and meows. Turn your voice into playful cat sounds."
+      }
+    }
+  },
+  "assets": {
+    "icon": {
+      "status": "approved",
+      "path": "brands/mewvo/assets/icon-meme-v1.png",
+      "decisionSource": "사용자: 좋아 이걸로 하자!!",
+      "generator": "built-in image_gen",
+      "design": "반쯤 감긴 눈과 크게 야옹하는 입의 흰 고양이 말풍선, 오렌지 배경"
+    },
+    "storeImages": {
+      "status": "approved-uploaded-google-play",
+      "campaign": "brands/mewvo/market/v1/campaign.json",
+      "preview": "brands/mewvo/market/v1/index.html",
+      "paths": [
+        "brands/mewvo/market/v1/ko-01-hello.png",
+        "brands/mewvo/market/v1/ko-02-listen.png",
+        "brands/mewvo/market/v1/ko-03-reply.png",
+        "brands/mewvo/market/v1/ko-feature.png",
+        "brands/mewvo/market/v1/en-01-hello.png",
+        "brands/mewvo/market/v1/en-02-listen.png",
+        "brands/mewvo/market/v1/en-03-reply.png",
+        "brands/mewvo/market/v1/en-feature.png"
+      ]
+    },
+    "palette": {
+      "status": "draft",
+      "colors": [
+        "#FF8B25",
+        "#FFF8EC",
+        "#302016"
+      ]
+    }
+  },
+  "releaseReview": {
+    "trademark": "not-cleared",
+    "domain": "not-verified",
+    "localizedStoreMetadata": "ko-en-play-and-apple-applied",
+    "voiceToMeowReleaseReadiness": "implemented-tests-passed-native-audio-qa-pending"
+  }
+}

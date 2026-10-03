@@ -1,0 +1,9 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+const root=path.resolve('.');
+const src=path.join(root,'assets/avatar/references/seated-haunch-target');
+const out=path.join(root,'dist/web/cat-haunch');await fs.mkdir(out,{recursive:true});
+for(const view of ['side','back','quarter','low-quarter'])await fs.copyFile(path.join(src,view+'.png'),path.join(out,view+'.png'));
+await fs.copyFile(path.join(root,'assets/avatar/references/hind-rig-study/side-sit.png'),path.join(out,'before.png'));
+await fs.writeFile(path.join(out,'index.html'),`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>앉은 자세 · 뒷다리 조형</title><style>body{margin:0;background:#f4f1eb;color:#293b37;font:16px system-ui}main{max-width:1200px;margin:auto;padding:24px}p{line-height:1.6}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}figure{margin:0;background:white;border-radius:16px;overflow:hidden}img{display:block;width:100%}figcaption{padding:16px}h1{font-size:26px}@media(max-width:700px){.grid{grid-template-columns:1fr}}</style><main><h1>앉은 자세 · 골반과 뒷다리</h1><p>새 정지 조형 기준입니다. 허벅지가 접힌 하퇴를 감싸고, 뒷발이 앞으로 드러나도록 수정했습니다.<br>리깅·일어서기 전환은 아직 적용하지 않았습니다. V13은 보존했습니다.</p><div class="grid"><figure><img src="before.png" alt="이전 뒷다리 연구"><figcaption>이전 · 노출된 무릎 고리와 골반 경계</figcaption></figure><figure><img src="side.png" alt="새 옆모습"><figcaption>수정 · 앉은 옆모습</figcaption></figure><figure><img src="back.png" alt="새 뒷모습"><figcaption>수정 · 뒷모습</figcaption></figure><figure><img src="quarter.png" alt="새 사선 모습"><figcaption>수정 · 사선 모습</figcaption></figure><figure><img src="low-quarter.png" alt="낮은 사선 모습"><figcaption>수정 · 낮은 사선</figcaption></figure></div><p>다음 단계: 관절 주변 메시 흐름 설계 → 같은 메시로 서기 형태 제작 → 가중치와 자세 보정.</p></main></html>`);
+process.stdout.write('http://localhost:8092/cat-haunch/index.html\n');

@@ -1,0 +1,13 @@
+{
+  "clips": [
+    {
+      "name": "Animation",
+      "duration": 4
+    }
+  ],
+  "skins": 4,
+  "morphs": 1,
+  "finalTime": "0",
+  "errors": [],
+  "standSitCycleRepeat": true
+}

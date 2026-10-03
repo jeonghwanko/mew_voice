@@ -1,0 +1,121 @@
+{
+  "packageName": "gg.pryzm.union",
+  "brandRevision": 3,
+  "date": "2026-09-10",
+  "releaseSubmitted": false,
+  "englishListingCreated": {
+    "packageName": "gg.pryzm.union",
+    "language": "en-US",
+    "title": "MewVoice — Talk with your cat",
+    "shortDescription": "Explore photos and meows. Turn your words into playful cat sounds.",
+    "fullDescription": "Human, speak meow.\n\nMewVoice brings a playful new way to connect with your cat.\n\nLOOK AND LISTEN\nExplore your cat’s photos and meows, add context, and consider the little clues behind their behavior.\n\nYOUR TURN, HUMAN\nSay what’s on your mind and hear it played back as cat sounds. Watch how your cat responds and enjoy a moment together.\n\nGET TO KNOW YOUR CAT\nKeep observations and reactions together as you learn about your companion.\n\nInterpretations are possible meanings, not verified translations or medical diagnoses. Generated meows are for playful interaction and do not guarantee that your cat understands your words."
+  },
+  "images": [
+    {
+      "language": "ko-KR",
+      "imageType": "phoneScreenshots",
+      "images": [
+        {
+          "id": "17643037913679712595",
+          "url": "https://lh3.googleusercontent.com/Ut9PNQsyPG494B06anSLHucAma5kXY-9gMu2g0Skl-SimGdnYWui_Qxjvi85menpIS2m",
+          "sha1": "e19733302a098b50bd984eac9ec22d3545b6bcba",
+          "sha256": "f1ea61f71047832a08bd8c633fb9b710acc7c4011b6f125c695532639df2e710",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        },
+        {
+          "id": "14136795230288277850",
+          "url": "https://lh3.googleusercontent.com/ttDU7p_3Mdm8I1xgIB9N9k5rmV5cILU3pcg7ljzfiBuC_pY85ZY8aQmgqnStC3IrrF4",
+          "sha1": "9a9e40b59f94eaf002801588f4661d19bf0accaa",
+          "sha256": "dcee4b1427f889cfabb7eab1f346725ebcc4d0414f47f9db9b38ed6ad255f406",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        },
+        {
+          "id": "927025778046796830",
+          "url": "https://lh3.googleusercontent.com/cwoatpkWKQocPArVwwxmNPukxi0sJTWqAlR_pRUcYh7PtiMsCE-g5u7--D1Gj1jr-FU",
+          "sha1": "687eab1ef2fe06e840aa1cc12a78fa49490502eb",
+          "sha256": "a965867557e836d84481d9e1dfcd845a1cbef2ebc413f6be92d10ed81641b692",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        }
+      ]
+    },
+    {
+      "language": "ko-KR",
+      "imageType": "featureGraphic",
+      "images": [
+        {
+          "id": "15140904462937290359",
+          "url": "https://lh3.googleusercontent.com/8jFdmzrYkupsjFOkboOd8eGuwSJXWnD04Miy_Dw2SKP4i8WJcVkQgGE-FiE5gYeH9jI",
+          "sha1": "bd21f069839535e8bdbb83e53b43fe7222831aba",
+          "sha256": "beeb920165f015446eb9320205fac7e7bb93e59805ebcfe094e9eec0d84724c1",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        }
+      ]
+    },
+    {
+      "language": "ko-KR",
+      "imageType": "icon",
+      "images": [
+        {
+          "id": "13998617284266823450",
+          "url": "https://lh3.googleusercontent.com/pglH1GvX80tWCUKyafRbwFhNhR8ehisvA82YyIOgHWPJZsqkGkyQyTQBkX8AThipipU",
+          "sha1": "08d1e37fdefb77f2967c9badc9ac11f8a61fc5c3",
+          "sha256": "7e951525c188165f286ea7bbd5d7073e5cc25832d99d715f226997da357326b4",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        }
+      ]
+    },
+    {
+      "language": "en-US",
+      "imageType": "phoneScreenshots",
+      "images": [
+        {
+          "id": "10056305563234981864",
+          "url": "https://lh3.googleusercontent.com/gwWL9bXs30EbXT7UubFYMGhXYYixs1ZQYfYPqSAjkHJSUIQJ7-FCdKl7R1UGnoObhfCA",
+          "sha1": "e5ec301bf8a815125515a2389c9dcee261b59c19",
+          "sha256": "3c852661181082e86380334e0d54c7184291b117da79256899f754f55d51680c",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        },
+        {
+          "id": "9698877701364425308",
+          "url": "https://lh3.googleusercontent.com/msY0MDJRKhGK-_TBIzlXFHj9BuS_E69hmYWCJsxlNfIotG3XxDvGGd938qnp9WA7mA",
+          "sha1": "7a51793d119f4296f518c4602519673212928491",
+          "sha256": "a4fc78c17147d0e620c22595bd7a64cd29ec91d3d78f0cbc72d18f03ff8d4d48",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        },
+        {
+          "id": "17866617847054926938",
+          "url": "https://lh3.googleusercontent.com/tr_vPpKn0PbTpCqKpFr1yLOfsvo3-dmlcerRFXRjjeWsvx3rItskyaCKQrIonsAVmt0",
+          "sha1": "a29a6b25480d08e2956d892d706c96ab51152ec8",
+          "sha256": "75dca09bcbc8f4dff4e0bacf529b05c0dcb032679b0eabc84bfc08d15b01a06d",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        }
+      ]
+    },
+    {
+      "language": "en-US",
+      "imageType": "featureGraphic",
+      "images": [
+        {
+          "id": "18092839702736226567",
+          "url": "https://lh3.googleusercontent.com/WdMkAnvIovTVipBcHF7bhVQzhE0kEoaX_KZgRfwgPVMnHrKsQB8vuaSO29i0wIlGNMQ",
+          "sha1": "fcd1493ecb59fa7a7b5c1e58ab9289cf737b93bd",
+          "sha256": "3e892234521a0f3f8b7eb3860a803f1a1b99d8299796465d2fcd84a72ca6f554",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        }
+      ]
+    },
+    {
+      "language": "en-US",
+      "imageType": "icon",
+      "images": [
+        {
+          "id": "17685253069668651801",
+          "url": "https://lh3.googleusercontent.com/j8jxqVLPHe5GECVuOcqKkBnvvpsuHiFfFak5Ojl7oMbcuGD0aNqq3fEFJGQ0rev7C5s",
+          "sha1": "08d1e37fdefb77f2967c9badc9ac11f8a61fc5c3",
+          "sha256": "7e951525c188165f286ea7bbd5d7073e5cc25832d99d715f226997da357326b4",
+          "aiGeneratedState": "aiGeneratedStateUnspecified"
+        }
+      ]
+    }
+  ]
+}

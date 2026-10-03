@@ -1,0 +1,17 @@
+{
+  "$schema": "https://mimi-seed.pryzm.gg/schema/project-manifest.json",
+  "project": "findthem",
+  "displayName": "우리 아이",
+  "description": "FindThem 고양이 사진·울음 관찰 앱. 모바일 CI는 office-stable Jenkins에서 실행한다.",
+  "services": {
+    "playstore": { "required": true, "packageName": "gg.pryzm.union" },
+    "appstore": { "required": true, "note": "기존 gg.pryzm.union 앱과 서명을 유지한다." },
+    "jenkins": {
+      "required": true,
+      "url": "http://192.168.30.23:8080",
+      "jobAndroid": "findthem-mobile",
+      "jobIos": "findthem-mobile",
+      "note": "office-stable, agent svl-mac-01. 외부 접속은 동일 서버의 Tailscale 100.106.148.39:8080. 인증은 ~/.mimi-seed/jenkins.json에 보관. CLI는 인증 URL과 manifest URL이 정확히 일치해야 한다."
+    }
+  }
+}

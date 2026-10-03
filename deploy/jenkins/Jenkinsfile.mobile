@@ -1,0 +1,166 @@
+// office-stable only. Store uploads default on; no source commits or automatic triggers.
+pipeline {
+    agent { label 'svl-mac-01' }
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 90, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '5'))
+    }
+    parameters {
+        string(name: 'SRC_GIT_URL', defaultValue: 'https://github.com/jeonghwanko/mew_voice.git', description: 'Standalone mew_voice Git SSH URL; required before building')
+        string(name: 'SRC_GIT_COMMIT', defaultValue: 'master', description: 'Source branch or full commit SHA')
+        choice(name: 'BUILD_TARGET', choices: ['both', 'android', 'ios'], description: 'Native release artifacts')
+        string(name: 'STORE_BUILD_NUMBER', defaultValue: '', description: 'Optional explicit build number above durable counter. Default: previous reservation + 1, migration starts at 87.')
+        string(name: 'REPLACE_INTERNAL_DRAFT_VERSION', defaultValue: '', description: 'Exact inspected Play internal draft versionCode to replace; blank refuses replacement.')
+        booleanParam(name: 'SCREENSHOTS_ONLY', defaultValue: false, description: 'Build native simulator screenshots only; no signed artifacts or store upload.')
+        booleanParam(name: 'ANDROID_PUBLISH_TO_GOOGLEPLAY', defaultValue: true, description: 'Upload to Google Play internal testing (draft)')
+        booleanParam(name: 'IOS_UPLOAD_TO_TESTFLIGHT', defaultValue: true, description: 'Upload IPA to TestFlight; no App Review submission')
+    }
+    environment {
+        CI = '1'
+        LANG = 'en_US.UTF-8'
+        LC_ALL = 'en_US.UTF-8'
+        EXPO_NO_TELEMETRY = '1'
+        MIMI_SEED_TELEMETRY = '0'
+        EXPO_PUBLIC_API_URL = 'https://union.pryzm.gg/api'
+        // Existing credential metadata identifies this as the shared FindThem APP_KEY.
+        EXPO_PUBLIC_APP_KEY = credentials('speakreward-app-key')
+        APPLE_TEAM_ID = '38BX8JVKDM'
+        ASC_API_KEY_ID = 'A97DY76WFW'
+        ASC_API_KEY_PATH = credentials('findthem-appstore-p8')
+        ASC_API_ISSUER_ID = '0c1eed1e-433f-4913-9b36-1c6b08bd4940'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                deleteDir()
+                // Public educational source: HTTPS checkout needs no deploy key.
+                // Inline Pipeline avoids requiring this key on the Jenkins controller too.
+                sh '''#!/bin/bash
+set -euo pipefail
+git init -q source
+test -n "$SRC_GIT_URL"
+git -C source remote add origin "$SRC_GIT_URL"
+git -C source fetch --depth=1 --no-tags origin "$SRC_GIT_COMMIT"
+git -C source checkout --detach FETCH_HEAD
+'''
+                dir('signing') {
+                    checkout([$class: 'GitSCM', branches: [[name: '*/main']],
+                        userRemoteConfigs: [[url: 'https://gitlab.vir.supervlabs.io/devops/virgm-devops.git', credentialsId: 'vir-gitlab-token']]])
+                }
+            }
+        }
+        stage('Store credentials') {
+            steps {
+                script {
+                    if (params.ANDROID_PUBLISH_TO_GOOGLEPLAY && params.BUILD_TARGET != 'ios') {
+                        withCredentials([file(credentialsId: 'findthem-googleplay-json', variable: 'PLAY_SERVICE_ACCOUNT')]) {
+                            sh 'test -s "$PLAY_SERVICE_ACCOUNT"'
+                        }
+                    }
+                }
+            }
+        }
+        stage('Preflight') {
+            steps {
+                sh '''#!/bin/bash
+set -euo pipefail
+test "$(uname -s)" = Darwin
+node -e 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)'
+command -v npm
+if [[ "$BUILD_TARGET" != android ]]; then xcodebuild -version; command -v pod; fi
+if [[ "$BUILD_TARGET" != ios ]]; then java -version; fi
+cd source
+node deploy/jenkins/mobile-ci.mjs prepare
+'''
+            }
+        }
+        stage('Dependencies and checks') {
+            steps {
+                dir('source') {
+                    sh '''#!/bin/bash
+set -euo pipefail
+npm ci --no-audit --no-fund
+node -e 'if (require("mimi-seed/package.json").version !== "0.19.13") process.exit(1)'
+npm run typecheck
+npm run lint
+npm test
+npm run test:ci
+'''
+                }
+            }
+        }
+        stage('Generate native projects') {
+            steps {
+                dir('source') {
+                    sh '''#!/bin/bash
+set -euo pipefail
+platform="$BUILD_TARGET"
+if [[ "$platform" == both ]]; then platform=all; fi
+npx --no-install expo prebuild --clean --no-install --platform "$platform"
+node deploy/jenkins/verify-native-permissions.mjs
+'''
+                }
+            }
+        }
+        stage('Android release') {
+            when { expression { params.BUILD_TARGET != 'ios' && !params.SCREENSHOTS_ONLY } }
+            steps {
+                dir('source') { sh 'node deploy/jenkins/mobile-ci.mjs android' }
+            }
+        }
+        stage('iOS release') {
+            when { expression { params.BUILD_TARGET != 'android' && !params.SCREENSHOTS_ONLY } }
+            steps {
+                withCredentials([string(credentialsId: 'svl-mac-01-keychain-password', variable: 'KEYCHAIN_PASSWORD')]) {
+                    sh '''#!/bin/bash
+set -euo pipefail
+set +x
+security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$HOME/Library/Keychains/login.keychain-db"
+security set-keychain-settings -lut 21600 "$HOME/Library/Keychains/login.keychain-db"
+'''
+                }
+                dir('source') { sh 'node deploy/jenkins/mobile-ci.mjs ios' }
+            }
+        }
+        stage('Archive artifacts') {
+            when { expression { !params.SCREENSHOTS_ONLY } }
+            steps {
+                archiveArtifacts(artifacts: 'source/artifacts/*', fingerprint: true, allowEmptyArchive: false)
+            }
+        }
+        stage('iOS screenshots') {
+            when { expression { params.BUILD_TARGET != 'android' && params.SCREENSHOTS_ONLY } }
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    dir('source') { sh 'node deploy/jenkins/capture-ios.mjs' }
+                    archiveArtifacts(artifacts: 'source/artifacts/*-welcome.png,source/artifacts/screenshots.json', allowEmptyArchive: false)
+                }
+            }
+        }
+        stage('Play internal draft') {
+            when { expression { params.ANDROID_PUBLISH_TO_GOOGLEPLAY && params.BUILD_TARGET != 'ios' && !params.SCREENSHOTS_ONLY } }
+            steps {
+              catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                withCredentials([file(credentialsId: 'findthem-googleplay-json', variable: 'PLAY_SERVICE_ACCOUNT')]) {
+                    dir('source') { sh 'node deploy/jenkins/publish-play.mjs' }
+                }
+              }
+            }
+        }
+        stage('TestFlight upload') {
+            when { expression { params.IOS_UPLOAD_TO_TESTFLIGHT && params.BUILD_TARGET != 'android' && !params.SCREENSHOTS_ONLY } }
+            steps {
+                dir('source') { sh 'node deploy/jenkins/mobile-ci.mjs testflight' }
+            }
+        }
+    }
+    post {
+        always {
+            // Private signing checkout and generated native files never survive this job.
+            deleteDir()
+        }
+    }
+}

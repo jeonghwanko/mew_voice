@@ -1,0 +1,59 @@
+{
+  "status": "approved-uploaded-google-play",
+  "brandRevision": 3,
+  "kind": "promotional-concepts-not-app-screenshots",
+  "locales": {
+    "ko": [
+      {
+        "id": "01-hello",
+        "eyebrow": "고양이와 대화하는 앱",
+        "title": "집사야,\n이제 말이\n통하냥?",
+        "body": "너는 야옹. 나는 안녕.\n우리 사이, 새로운 대화.",
+        "bubble": "일단 내 말부터 듣냥.",
+        "footer": "사진으로 보고 · 울음으로 듣고"
+      },
+      {
+        "id": "02-listen",
+        "eyebrow": "우리 고양이 알아보기",
+        "title": "그 표정,\n그 야옹.\n무슨 뜻일까?",
+        "body": "사진과 울음소리에 담긴\n작은 단서를 함께 살펴봐요.",
+        "bubble": "집사 관찰력 테스트냥.",
+        "footer": "고양이의 마음을 조금 더 가까이"
+      },
+      {
+        "id": "03-reply",
+        "eyebrow": "이번엔 집사가 말할 차례",
+        "title": "내 말이\n야옹이 되는\n순간.",
+        "body": "하고 싶은 말을 들려주세요.\n고양이 울음소리로 바꿔 재생해요.",
+        "bubble": "오, 제법 고양이 같은데?",
+        "footer": "말을 건네고 · 반응을 살펴봐요"
+      }
+    ],
+    "en": [
+      {
+        "id": "01-hello",
+        "eyebrow": "TALK WITH YOUR CAT",
+        "title": "Human,\nspeak\nmeow.",
+        "body": "You say hello. They say meow.\nStart a new kind of conversation.",
+        "bubble": "My turn first, human.",
+        "footer": "SEE THE MOMENT. HEAR THE MEOW."
+      },
+      {
+        "id": "02-listen",
+        "eyebrow": "GET TO KNOW YOUR CAT",
+        "title": "That look.\nThat meow.\nWhat gives?",
+        "body": "Explore the little clues\nin your cat’s photos and meows.",
+        "bubble": "Are you paying attention?",
+        "footer": "A LITTLE CLOSER TO YOUR CAT"
+      },
+      {
+        "id": "03-reply",
+        "eyebrow": "YOUR TURN, HUMAN",
+        "title": "Your words.\nNow in\nmeow.",
+        "body": "Say what’s on your mind.\nHear it played back as cat sounds.",
+        "bubble": "Now that sounds familiar.",
+        "footer": "SAY SOMETHING. WATCH THE REACTION."
+      }
+    ]
+  }
+}

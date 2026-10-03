@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>pet-companion · 핵심 흐름 시안</title>
+  <style>
+    :root { --sky:#0EA5E9; --bg:#0A0A0A; --card:#1A1A1A; --tab:rgba(28,25,23,.96); --muted:#a3a3a3; --line:#303030; --good:#5eead4; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; color:#f5f5f5; background:radial-gradient(circle at 50% -30%,#16394d 0,var(--bg) 42%); font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Noto Sans KR",sans-serif; }
+    .intro { max-width:1100px; padding:42px 24px 24px; margin:auto; }
+    .eyebrow { color:#7dd3fc; font-size:12px; font-weight:800; letter-spacing:.1em; }
+    h1 { margin:8px 0; font-size:28px; letter-spacing:-.05em; }
+    .intro p { margin:0; color:#bdbdbd; font-size:14px; line-height:1.65; }
+    .flow { display:flex; gap:28px; width:max-content; min-width:100%; padding:22px max(24px,calc((100vw - 1100px)/2)) 60px; align-items:center; }
+    .phone { width:290px; height:620px; flex:0 0 290px; position:relative; overflow:hidden; border:8px solid #242424; border-radius:38px; background:var(--bg); box-shadow:0 20px 45px rgba(0,0,0,.45); }
+    .phone:before { content:""; position:absolute; z-index:6; top:8px; left:50%; width:82px; height:20px; transform:translateX(-50%); border-radius:0 0 14px 14px; background:#242424; }
+    .screen { height:100%; overflow-y:auto; padding:35px 17px 106px; scrollbar-width:none; }
+    .screen::-webkit-scrollbar { display:none; }
+    .step { position:absolute; top:-3px; left:18px; z-index:7; padding:4px 8px; border-radius:8px; color:#8c8c8c; background:#151515; font-size:10px; font-weight:700; }
+    .flow-arrow { flex:0 0 16px; color:var(--sky); font-size:26px; font-weight:300; }
+    .status { display:flex; justify-content:space-between; color:#bbb; font-size:10px; padding:0 4px 16px; }
+    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:17px; }
+    .header h2 { margin:0; font-size:21px; letter-spacing:-.06em; }
+    .avatar { display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:#243440; color:#d9f5ff; font-size:15px; }
+    .pet { display:flex; gap:13px; align-items:center; padding:14px; border:1px solid #2a2a2a; border-radius:18px; background:linear-gradient(130deg,#202020,#171717); }
+    .cat { display:grid; flex:0 0 54px; place-items:center; width:54px; height:54px; border-radius:18px; color:#bae6fd; background:#183141; font-size:28px; }
+    .pet strong { display:block; font-size:15px; }.pet span { display:block; margin-top:3px; color:var(--muted); font-size:11px; }
+    .label { margin:23px 2px 10px; color:#aaa; font-size:12px; font-weight:700; }
+    .card { padding:14px; margin-bottom:10px; border:1px solid #292929; border-radius:16px; background:var(--card); }
+    .card-title { display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:700; }.date { color:#8e8e8e; font-size:10px; font-weight:400; }
+    .card p { margin:7px 0 0; color:#bfbfbf; font-size:12px; line-height:1.45; }
+    .pill { display:inline-block; margin-top:9px; padding:4px 7px; border-radius:7px; color:#bae6fd; background:#173344; font-size:10px; }
+    .tabs { position:absolute; right:0; bottom:0; left:0; z-index:5; display:flex; justify-content:space-around; padding:11px 8px 15px; border-top:1px solid #2b2927; background:var(--tab); backdrop-filter:blur(12px); }
+    .tab { min-width:42px; color:#8c8c8c; text-align:center; font-size:9px; }.tab i { display:block; margin-bottom:4px; font-size:17px; font-style:normal; }.tab.active { color:#e5f6ff; }.tab.capture { color:#7dd3fc; }
+    .fab { position:absolute; z-index:8; bottom:52px; left:50%; display:grid; place-items:center; width:50px; height:50px; transform:translateX(-50%); border:4px solid #171717; border-radius:50%; color:white; background:var(--sky); font-size:25px; box-shadow:0 8px 20px rgba(14,165,233,.38); }
+    .hero { margin:4px 0 20px; padding:19px 15px; border-radius:20px; background:linear-gradient(135deg,#102e40,#1a1a1a 58%); }.hero h3 { margin:0 0 7px; font-size:18px; letter-spacing:-.05em; }.hero p { margin:0; color:#c7d8df; font-size:12px; line-height:1.5; }
+    .option { display:flex; gap:12px; align-items:center; padding:13px 3px; border-bottom:1px solid var(--line); font-size:13px; }.option b { display:grid; place-items:center; width:30px; height:30px; border-radius:10px; background:#252525; color:#7dd3fc; font-size:15px; }.option small { display:block; margin-top:3px; color:#959595; font-size:10px; }
+    .question { margin-top:14px; padding:12px; border:1px solid #3a3a3a; border-radius:14px; color:#aaa; font-size:12px; line-height:1.45; }.question em { display:block; margin-bottom:4px; color:#e4e4e4; font-style:normal; }
+    .photo { height:126px; display:grid; place-items:center; margin:8px 0 14px; border:1px dashed #53788b; border-radius:18px; color:#b7e7fb; background:linear-gradient(145deg,#143243,#1a1a1a); font-size:51px; }.photo span { position:absolute; align-self:end; margin-bottom:12px; padding:5px 8px; border-radius:7px; color:#d9f5ff; background:rgba(10,10,10,.65); font-size:10px; }
+    .button { width:100%; padding:13px; border:0; border-radius:13px; color:#fff; background:var(--sky); font-size:13px; font-weight:800; }.note { margin:10px 2px; color:#888; font-size:10px; line-height:1.5; }
+    .result-head { padding:14px; border-radius:17px; background:#15384b; }.result-head small { color:#b9e9fb; font-size:10px; }.result-head h3 { margin:5px 0 3px; font-size:17px; }.result-head p { margin:0; color:#c5e3ee; font-size:11px; line-height:1.45; }
+    .result { padding:11px 0; border-bottom:1px solid #303030; }.result:last-of-type { border:0; }.result b { display:block; margin-bottom:5px; color:#f0f0f0; font-size:12px; }.result p { margin:0; color:#b4b4b4; font-size:11px; line-height:1.45; }.mark { margin-right:5px; color:#7dd3fc; }.limit { margin-top:12px; padding:10px; border-radius:10px; color:#bbb; background:#24211e; font-size:10px; line-height:1.45; }.limit strong { color:#f4cf95; }
+    .choice { display:flex; gap:8px; margin:12px 0; }.choice div { flex:1; padding:11px 7px; border:1px solid #373737; border-radius:12px; color:#c4c4c4; text-align:center; font-size:11px; }.choice div:first-child { border-color:#277da4; color:#d9f5ff; background:#153344; }.memory { padding:12px; border-radius:14px; background:#182923; }.memory b { display:block; color:var(--good); font-size:11px; }.memory p { margin:5px 0 0; color:#c5d7cf; font-size:11px; line-height:1.45; }
+    .demo { position:absolute; right:17px; bottom:66px; left:17px; color:#777; font-size:9px; line-height:1.35; text-align:center; }
+    @media (max-width:700px) { .intro { padding:28px 20px 10px; }.flow { padding:18px 20px 44px; }.flow-arrow { display:none; } }
+  </style>
+</head>
+<body>
+  <header class="intro"><div class="eyebrow">PET COMPANION · STATIC UX CONCEPT</div><h1>고양이 이해 대화 앱 · 첫 기록 흐름</h1><p>홈에서 기록을 시작해 관찰 가능한 단서와 가능한 해석을 읽고, 실제 반응을 남겨 다음 대화에 연결하는 정적 시안입니다. 모모와 모든 결과는 설명용 데모입니다.</p></header>
+  <main class="flow" aria-label="핵심 사용자 흐름 시안">
+    <section class="phone"><span class="step">01 · 홈</span><div class="screen"><div class="status"><span>9:41</span><span>● ● ◒</span></div><div class="header"><h2>안녕, 모모</h2><span class="avatar">♧</span></div><div class="pet"><span class="cat">🐈</span><div><strong>모모</strong><span>코리안 숏헤어 · 3살</span></div></div><p class="label">최근 관찰</p><article class="card"><div class="card-title">창가에서 한참 울었어요 <span class="date">어제</span></div><p>관찰을 기록하면 모모의 다음 반응을 함께 볼 수 있어요.</p><span class="pill">반응 남기기</span></article><article class="card"><div class="card-title">오늘 모모는 어떤가요?</div><p>사진, 소리, 짧은 영상과 함께 궁금한 점을 남겨보세요.</p></article></div><button class="fab" aria-label="촬영">＋</button><nav class="tabs"><span class="tab active"><i>⌂</i>홈</span><span class="tab"><i>◷</i>기록</span><span class="tab capture"><i>⊙</i>촬영</span><span class="tab"><i>◌</i>대화</span><span class="tab"><i>♙</i>우리 아이</span></nav></section>
+    <span class="flow-arrow">→</span>
+    <section class="phone"><span class="step">02 · 촬영 / 질문</span><div class="screen"><div class="status"><span>9:41</span><span>● ● ◒</span></div><div class="header"><h2>모모를 기록해요</h2><span>×</span></div><div class="photo">🐈<span>사진 예시 · 데모</span></div><div class="option"><b>▣</b><div>사진 추가<small>표정과 자세가 보이게</small></div></div><div class="option"><b>◉</b><div>소리 또는 짧은 영상<small>가능한 경우에만 선택</small></div></div><div class="question"><em>무엇이 궁금한가요?</em>창가를 보며 짧게 울어요. 평소보다 자주 그래요.</div><p class="note">실제 분석 전에는 입력 품질과 지원 가능한 관찰 범위를 안내합니다.</p><button class="button">관찰 정리 요청하기</button></div><nav class="tabs"><span class="tab"><i>⌂</i>홈</span><span class="tab"><i>◷</i>기록</span><span class="tab capture active"><i>⊙</i>촬영</span><span class="tab"><i>◌</i>대화</span><span class="tab"><i>♙</i>우리 아이</span></nav></section>
+    <span class="flow-arrow">→</span>
+    <section class="phone"><span class="step">03 · 결과</span><div class="screen"><div class="status"><span>9:41</span><span>● ● ◒</span></div><div class="header"><h2>관찰 결과</h2><span>⌁</span></div><div class="result-head"><small>모모 · 사진과 보호자 메모 기준 · 데모</small><h3>창밖 자극에 주의를 기울이는 모습</h3><p>확정적인 감정 번역이 아니라, 보이는 단서에서 가능한 해석을 정리했어요.</p></div><div class="result"><b><span class="mark">●</span>추정</b><p>새나 움직임에 관심을 보이는 모습일 수 있어요.</p></div><div class="result"><b><span class="mark">●</span>관찰</b><p>창 쪽을 향한 자세와 귀 방향, 열린 눈이 보입니다.</p></div><div class="result"><b><span class="mark">●</span>대안 해석</b><p>보호자의 관심을 요청하는 상황일 수도 있어요.</p></div><div class="result"><b><span class="mark">●</span>반응 제안</b><p>창가에서 잠시 함께 관찰하고, 관심이 이어지면 놀이로 전환해 보세요.</p></div><div class="limit"><strong>신뢰 수준: 제한적</strong><br>사진과 메모만 있어요. 사진만으로 울음의 원인이나 건강 상태를 판단할 수는 없어요. 변화가 지속되면 전문가와 상의하세요.</div></div><button class="fab" aria-label="다음">→</button><nav class="tabs"><span class="tab"><i>⌂</i>홈</span><span class="tab active"><i>◷</i>기록</span><span class="tab capture"><i>⊙</i>촬영</span><span class="tab"><i>◌</i>대화</span><span class="tab"><i>♙</i>우리 아이</span></nav></section>
+    <span class="flow-arrow">→</span>
+    <section class="phone"><span class="step">04 · 피드백 / 기억</span><div class="screen"><div class="status"><span>9:41</span><span>● ● ◒</span></div><div class="header"><h2>그 뒤 모모는 어땠나요?</h2><span>×</span></div><article class="card"><div class="card-title">창가 관찰 뒤 놀이 제안</div><p>오늘 오후 4:10에 기록한 데모 결과</p></article><p class="label">해 본 행동</p><div class="choice"><div>창가에서<br>함께 있었어요</div><div>낚싯대 놀이를<br>했어요</div><div>다른 행동</div></div><p class="label">이후 반응</p><div class="question"><em>10분 뒤 조용해졌고, 장난감을 따라왔어요.</em>선택 사항 · 다음 대화에서 이 기록을 참고할 수 있어요.</div><button class="button">반응 저장하기</button><p class="label">다음 대화에 남는 기억</p><div class="memory"><b>✓ 보호자 기록</b><p>놀이 10분 뒤 조용해지고 장난감을 따라옴. 다음 질문에서 날짜와 함께 인용됩니다.</p></div></div><p class="demo">정적 시안입니다. 저장, 분석, 개인화 기능은 아직 동작하지 않습니다.</p><nav class="tabs"><span class="tab"><i>⌂</i>홈</span><span class="tab active"><i>◷</i>기록</span><span class="tab capture"><i>⊙</i>촬영</span><span class="tab"><i>◌</i>대화</span><span class="tab"><i>♙</i>우리 아이</span></nav></section>
+  </main>
+</body>
+</html>

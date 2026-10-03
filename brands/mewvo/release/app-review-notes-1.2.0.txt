@@ -1,0 +1,17 @@
+MewVoice (Korean: 뮤 보이스), version 1.2.0, replaces the old neighborhood/community app with private cat observations and playful voice-to-meow audio. There is no public user feed, user-to-user messaging or sharing of posts to other users in this version. The former public UGC flow referenced in the March review has been removed.
+
+Try voice-to-meow without an account:
+1. Launch and tap '체험으로 살펴보기' (Explore demo).
+2. Home > '내 말을 야옹으로'.
+3. Tap '눌러서 말하기', allow the microphone, and speak for up to 6 seconds.
+4. Tap '야옹 들어보기' to play the generated sound. Stop or record again.
+Synthesis runs locally from timing and amplitude; it is not semantic translation or a claim that cats understand words. This recording is not uploaded. Demo observations are clearly labeled samples.
+
+Account deletion (build 90):
+Launch > '계정으로 시작하기' > '처음이에요 · 개발용 게스트 계정' > enter a name (2–20 characters) > '게스트 계정 만들기'. Open Settings (설정), scroll to '계정 삭제', then confirm '계정 영구 삭제'. The app calls the authenticated account deletion endpoint and clears the session after success. No email or phone request is needed. Cancellation leaves the account intact. Existing users can sign in with their phone and password. Local demo mode creates no server account.
+A physical-device recording requested in the previous review is not attached; the steps above are provided for direct verification.
+
+Data collected:
+Account mode uses an account ID and display name; existing account sign-in uses phone/password. Users may submit a pet name/traits, cat photos or cat meow recordings, questions, context, observations, feedback and conversation messages. Storage consent and timestamps are recorded. These records are private to the authenticated owner. Users can export record metadata and delete pets or their account.
+The account-mode observation/conversation service sends submitted media and relevant pet/question/prior-feedback context to the configured AI provider to generate observation assistance. Supported providers are Google Gemini (default configuration), OpenAI and Anthropic, selected by server configuration; audio is sent only to a provider supporting audio. This is separate from the local human-voice-to-meow feature. Interpretations are uncertain and are not veterinary diagnoses.
+Demo records stay on the device and do not call AI. The interface is currently Korean.

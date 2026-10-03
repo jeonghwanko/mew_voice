@@ -1,0 +1,58 @@
+{
+  "locale": "ko-KR",
+  "generatedAt": "2026-09-11T13:46:07.484Z",
+  "sourceViewport": "390x844@3x",
+  "platforms": {
+    "ios": {
+      "width": 1290,
+      "height": 2796,
+      "phoneWidth": 962,
+      "phoneTop": 716,
+      "radius": 84
+    },
+    "android": {
+      "width": 1080,
+      "height": 1920,
+      "phoneWidth": 710,
+      "phoneTop": 430,
+      "radius": 58
+    }
+  },
+  "slides": [
+    {
+      "id": "01-home",
+      "eyebrow": "뮤 보이스",
+      "title": "고양이와 더 가까워지는 시간",
+      "body": "매일 마주하는 작은 신호부터 천천히 알아가요",
+      "source": "01-home.png"
+    },
+    {
+      "id": "02-three-ways",
+      "eyebrow": "세 가지 교감",
+      "title": "말하고 · 듣고 · 사진으로 살펴봐요",
+      "body": "그날의 상황에 맞는 방법을 한 번의 터치로",
+      "source": "02-three-ways.png"
+    },
+    {
+      "id": "03-conversation",
+      "eyebrow": "글로 대화하기",
+      "title": "궁금했던 순간을 편하게 남겨요",
+      "body": "질문과 함께 사진·울음·돌봄 기록을 모아 보세요",
+      "source": "03-conversation.png"
+    },
+    {
+      "id": "04-records",
+      "eyebrow": "우리 아이 기록",
+      "title": "함께한 하루가 차곡차곡",
+      "body": "사진과 울음, 돌봄의 순간을 한곳에서 돌아봐요",
+      "source": "04-records.png"
+    },
+    {
+      "id": "05-space",
+      "eyebrow": "작은 취향까지",
+      "title": "우리만의 작은 공간을 꾸며요",
+      "body": "고양이와 함께 머물고 싶은 장면을 만들어 보세요",
+      "source": "05-space.png"
+    }
+  ]
+}

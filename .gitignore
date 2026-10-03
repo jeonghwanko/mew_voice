@@ -1,0 +1,62 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env
+.env.*
+!.env.example
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# Blender WIP 산출물 — 수 GB, 100MB 초과 파일 포함, 로컬 보관
+# (GitHub 100MB 제한에 걸리고 히스토리가 되돌릴 수 없게 부풀어서 커밋하지 않는다)
+assets/avatar/blender/
+assets/avatar/realistic/
+assets/avatar/references/
+assets/avatar/rebuild-v2/
+assets/avatar/concepts/
+assets/avatar/original/
+*.blend
+*.blend1
+output/
+
+artifacts/
+packages/shared/dist/
+packages/shared/node_modules/
+signing/
+.secret/
+__pycache__/

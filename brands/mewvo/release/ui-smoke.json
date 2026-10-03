@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "environment": "Chrome with synthetic microphone; native device verification still required",
+  "checks": [
+    "record",
+    "auto-stop",
+    "generate WAV",
+    "play",
+    "stop",
+    "record again",
+    "leave while recording"
+  ]
+}

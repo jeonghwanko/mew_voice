@@ -1,0 +1,9 @@
+{
+  "appId": "gg.pryzm.union",
+  "version": "1.1.0",
+  "versionCode": 211210772,
+  "commit": "b979c7d20b459b45385d85f8b81f63cc7299b9f3",
+  "platform": "both",
+  "mimiSeed": "0.19.13",
+  "jenkinsBuild": "http://100.106.148.39:8080/job/findthem-mobile/17/"
+}

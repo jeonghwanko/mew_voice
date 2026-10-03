@@ -1,0 +1,57 @@
+{
+  "brandRevision": 3,
+  "status": "review-draft",
+  "kind": "promotional-concepts-not-app-screenshots",
+  "outputs": [
+    {
+      "file": "ko-01-hello.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "ko-02-listen.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "ko-03-reply.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "ko-feature.png",
+      "width": 1024,
+      "height": 500
+    },
+    {
+      "file": "en-01-hello.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "en-02-listen.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "en-03-reply.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "en-feature.png",
+      "width": 1024,
+      "height": 500
+    },
+    {
+      "file": "icon-512.png",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "file": "icon-1024.png",
+      "width": 1024,
+      "height": 1024
+    }
+  ]
+}

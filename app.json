@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "slug": "findthem",
+    "version": "1.2.0",
+    "orientation": "portrait",
+    "scheme": "findthem",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "gg.pryzm.union"
+    },
+    "android": {
+      "package": "gg.pryzm.union",
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["RECORD_AUDIO"],
+      "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-dev-client",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "고양이 울음을 관찰하고 내 목소리를 야옹 소리로 바꾸기 위해 마이크를 사용합니다."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "microphonePermission": "고양이 울음을 관찰하고 내 목소리를 야옹 소리로 바꾸기 위해 마이크를 사용합니다.",
+          "photosPermission": "우리 아이의 사진으로 관찰 기록을 남깁니다.",
+          "cameraPermission": "우리 아이의 모습과 자세를 촬영합니다."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "be9faeab-634f-423e-89fb-0b8a1bf9e7c8"
+      }
+    },
+    "owner": "lucasko80",
+    "icon": "./assets/icon-v2.png",
+    "splash": {
+      "backgroundColor": "#0A1016",
+      "image": "./assets/icon-v2.png",
+      "resizeMode": "contain"
+    },
+    "web": {
+      "favicon": "./assets/icon-v2.png"
+    }
+  }
+}

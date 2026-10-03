@@ -1,0 +1,112 @@
+{
+  "source_sha256": "cccfdfc647832c49a689773a49af5f259f5977e6f54e266110bf7fa96aa6338d",
+  "bones": 24,
+  "body_vertices": 18986,
+  "max_influences": 4,
+  "frames": 121,
+  "fps": 30,
+  "cycle_endpoint_match": true,
+  "samples": [
+    {
+      "frame": 1,
+      "minimum_z": -0.000994894653558731
+    },
+    {
+      "frame": 6,
+      "minimum_z": -0.000994894653558731
+    },
+    {
+      "frame": 11,
+      "minimum_z": -0.000994894653558731
+    },
+    {
+      "frame": 16,
+      "minimum_z": -0.000994894653558731
+    },
+    {
+      "frame": 21,
+      "minimum_z": -0.0009948937222361565
+    },
+    {
+      "frame": 26,
+      "minimum_z": -0.0009948948863893747
+    },
+    {
+      "frame": 31,
+      "minimum_z": -0.0009948943043127656
+    },
+    {
+      "frame": 36,
+      "minimum_z": -0.0009948954684659839
+    },
+    {
+      "frame": 41,
+      "minimum_z": -0.0009948951192200184
+    },
+    {
+      "frame": 46,
+      "minimum_z": -0.0009948951192200184
+    },
+    {
+      "frame": 51,
+      "minimum_z": -0.0011735012521967292
+    },
+    {
+      "frame": 56,
+      "minimum_z": -0.001533537870272994
+    },
+    {
+      "frame": 61,
+      "minimum_z": -0.0016678557731211185
+    },
+    {
+      "frame": 66,
+      "minimum_z": -0.0016678557731211185
+    },
+    {
+      "frame": 71,
+      "minimum_z": -0.0016678557731211185
+    },
+    {
+      "frame": 76,
+      "minimum_z": -0.0016678557731211185
+    },
+    {
+      "frame": 81,
+      "minimum_z": -0.001533537870272994
+    },
+    {
+      "frame": 86,
+      "minimum_z": -0.0011735012521967292
+    },
+    {
+      "frame": 91,
+      "minimum_z": -0.0009948951192200184
+    },
+    {
+      "frame": 96,
+      "minimum_z": -0.0009948951192200184
+    },
+    {
+      "frame": 101,
+      "minimum_z": -0.0009948954684659839
+    },
+    {
+      "frame": 106,
+      "minimum_z": -0.0009948943043127656
+    },
+    {
+      "frame": 111,
+      "minimum_z": -0.0009948948863893747
+    },
+    {
+      "frame": 116,
+      "minimum_z": -0.0009948937222361565
+    },
+    {
+      "frame": 121,
+      "minimum_z": -0.000994894653558731
+    }
+  ],
+  "scope": "sit / stand only; source facial expression actions are not copied into this rig study"
+}
