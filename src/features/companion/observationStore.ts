@@ -57,3 +57,82 @@ export async function deleteDemoObservation(id: string): Promise<RemovedDemoObse
     return { localPhotoUri: existing.localPhotoUri, localAudioUri: existing.localAudioUri, localVideoUri: existing.localVideoUri };
   });
 }
+
+export type UpdateDemoObservationMediaInput = {
+  uri: string;
+  kind: 'PHOTO' | 'AUDIO' | 'VIDEO';
+  durationMs?: number;
+  mimeType?: string;
+  byteSize?: number;
+};
+
+export type ReplacedDemoObservationMedia = {
+  previous: RemovedDemoObservation;
+  observation: DemoObservation;
+};
+
+function assertMediaDuration(kind: 'PHOTO' | 'AUDIO' | 'VIDEO', durationMs: number | undefined) {
+  if (kind === 'VIDEO' && (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 11_000)) throw new Error('VIDEO_TOO_LONG');
+  if (kind === 'AUDIO' && (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 46_000)) throw new Error('AUDIO_TOO_LONG');
+}
+
+function normalizeMedia(input: UpdateDemoObservationMediaInput) {
+  if (typeof input.uri !== 'string' || !input.uri.trim()) throw new Error('INVALID_OBSERVATION_MEDIA');
+  if (input.kind !== 'PHOTO' && input.kind !== 'AUDIO' && input.kind !== 'VIDEO') throw new Error('INVALID_OBSERVATION_MEDIA');
+  assertMediaDuration(input.kind, input.durationMs);
+  const mimeType = typeof input.mimeType === 'string' && input.mimeType.trim() ? input.mimeType.trim() : undefined;
+  const byteSize = typeof input.byteSize === 'number' && Number.isFinite(input.byteSize) && input.byteSize > 0 ? input.byteSize : undefined;
+  return { uri: input.uri.trim(), kind: input.kind, durationMs: input.durationMs, mimeType, byteSize };
+}
+
+/**
+ * Replace only the photo, cry, or video file on one observation.
+ * The observation id, question, context tags, reactions, inference, and every other record stay.
+ * Kind cannot change. This does not analyze the new file or invent a server upload.
+ */
+export async function updateDemoObservationMedia(id: string, input: UpdateDemoObservationMediaInput): Promise<ReplacedDemoObservationMedia> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    const index = data.observations.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('NOT_FOUND');
+    const current = data.observations[index];
+    const normalized = normalizeMedia(input);
+    if (current.kind !== normalized.kind) throw new Error('INVALID_OBSERVATION_MEDIA');
+    const previous: RemovedDemoObservation = {
+      localPhotoUri: current.localPhotoUri,
+      localAudioUri: current.localAudioUri,
+      localVideoUri: current.localVideoUri,
+    };
+    const updated: DemoObservation = { ...current };
+    if (normalized.kind === 'PHOTO') {
+      updated.localPhotoUri = normalized.uri;
+      updated.localAudioUri = undefined;
+      updated.localVideoUri = undefined;
+      updated.media = [];
+    } else if (normalized.kind === 'AUDIO') {
+      updated.localAudioUri = normalized.uri;
+      updated.localPhotoUri = undefined;
+      updated.localVideoUri = undefined;
+      updated.media = [{
+        kind: 'AUDIO',
+        mimeType: normalized.mimeType || 'audio/m4a',
+        byteSize: normalized.byteSize ?? 0,
+        durationMs: normalized.durationMs ?? null,
+        url: '',
+      }];
+    } else {
+      updated.localVideoUri = normalized.uri;
+      updated.localPhotoUri = undefined;
+      updated.localAudioUri = undefined;
+      updated.media = [{
+        kind: 'VIDEO',
+        mimeType: normalized.mimeType || 'video/mp4',
+        byteSize: normalized.byteSize ?? 0,
+        durationMs: normalized.durationMs ?? null,
+        url: '',
+      }];
+    }
+    data.observations[index] = updated;
+    return { previous, observation: updated };
+  });
+}

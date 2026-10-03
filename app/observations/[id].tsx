@@ -98,9 +98,29 @@ export default function ObservationScreen() {
     if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; }
     Alert.alert('관찰을 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
   };
+  const mediaLabel = data?.kind === 'AUDIO' ? '울음' : data?.kind === 'VIDEO' ? '영상' : '사진';
+  const openMediaReplace = () => {
+    if (!data) return;
+    if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_MEDIA_ACCOUNT_READONLY'))); return; }
+    setError('');
+    const mode = data.kind === 'AUDIO' ? 'audio' : data.kind === 'VIDEO' ? 'video' : 'photo';
+    const next: Record<string, string> = { mode, replaceId: id };
+    const returnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+    const conversationId = Array.isArray(params.conversationId) ? params.conversationId[0] : params.conversationId;
+    const petId = Array.isArray(params.petId) ? params.petId[0] : params.petId;
+    if (returnTo) next.returnTo = returnTo;
+    if (conversationId) next.conversationId = conversationId;
+    if (petId) next.petId = petId;
+    router.push({ pathname: '/capture', params: next });
+  };
   return <Screen title={data?.question || '오늘의 관찰'} subtitle={data ? `${displayDate(data.createdAt)} · ${companion.pets.data?.find(p => p.id === data.petId)?.name ?? '우리 아이'}` : 'OBSERVATION'}>
     {observation.isLoading && <Loading />}<ErrorNote message={observation.error ? errorMessage(observation.error) : null} />
     {data && <>{data.kind === 'AUDIO' ? (data.localAudioUri ? <><AudioPreview uri={data.localAudioUri} />{Platform.OS === 'web' && <Body muted>{data.localMediaVolatile ? '브라우저 체험에서는 녹음을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.' : '브라우저 체험에서는 녹음을 서버로 보내지 않아요.'}</Body>}</> : <Card><Body muted>이 울음 파일은 이 화면에서 다시 들을 수 없어요. 체험 모드에서 기기에 남긴 녹음만 재생할 수 있어요.</Body></Card>) : data.kind === 'VIDEO' && data.localVideoUri ? <><VideoPreview uri={data.localVideoUri} />{Platform.OS === 'web' && data.localMediaVolatile && <Body muted>브라우저 체험에서는 영상을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body>}</> : data.kind === 'VIDEO' ? <Card><Body muted>이 영상 파일은 이 화면에서 재생할 수 없어요. 체험 모드에서 남긴 영상만 기기에서 미리 볼 수 있어요.</Body></Card> : data.localPhotoUri || !companion.demo ? <PrivatePhoto id={id} localUri={data.localPhotoUri} /> : <Card><Body muted>이 사진 파일은 이 화면에서 다시 볼 수 없어요. 체험 모드에서 기기에 남긴 사진만 미리 볼 수 있어요.</Body></Card>}{data.kind === 'AUDIO' && <Body muted>이 녹음은 AI로 분석하지 않았어요. 소리의 뜻을 번역하지 않아요.</Body>}{data.kind === 'VIDEO' && <Body muted>이 영상은 AI로 분석하지 않았어요. 길이와 상황만 기록이에요.</Body>}<View style={{ marginBottom: 14 }}><Badge>{companion.demo ? '체험 기록 · 실제 AI 분석 아님' : data.status === 'ABSTAINED' ? '판단 어려움' : '추정 해석 · 관찰을 바탕으로'}</Badge></View>{companion.demo && <Body>이 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요.</Body>}
+      <Card>
+        <Heading>첨부한 {mediaLabel}</Heading>
+        <Body muted>같은 종류의 {mediaLabel}만 바꿔요. 질문, 상황 태그, 반응 기록은 그대로 두어요. 새 파일은 AI로 분석하지 않아요.</Body>
+        {companion.demo ? <Button title={`${mediaLabel} 바꾸기`} secondary disabled={busy} onPress={openMediaReplace} /> : <Body muted>이 계정에 남긴 사진·울음·영상은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
+      </Card>
       <Card>
         <Heading>남긴 질문과 상황</Heading>
         {captionEditing ? <>

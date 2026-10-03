@@ -8,10 +8,10 @@ import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { deleteDemoFeedback, updateDemoFeedback, type UpdateDemoFeedbackInput } from './reactionStore';
-import { deleteDemoObservation, updateDemoObservationCaption, type UpdateDemoObservationCaptionInput } from './observationStore';
+import { deleteDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia, type UpdateDemoObservationCaptionInput, type UpdateDemoObservationMediaInput } from './observationStore';
 import { deleteDemoConversation } from './conversationStore';
 import { updateDemoPetProfile, type UpdateDemoPetProfileInput } from './petStore';
-import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
+import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations, revokeDemoMediaUrls } from './webMediaStore';
 import { observationListPath, pageObservations } from './observationPages';
 
 export type Observation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string; localMediaVolatile?: boolean };
@@ -109,6 +109,27 @@ export function useCompanion() {
     await invalidate();
     return record;
   };
+  // Account mode has no media replace route. Do not pretend a server upload happened.
+  const replaceObservationMedia = async (id: string, input: UpdateDemoObservationMediaInput) => {
+    if (!demo) throw new Error('OBSERVATION_MEDIA_ACCOUNT_READONLY');
+    const current = (await getDemo()).observations.find(item => item.id === id);
+    if (!current) throw new Error('NOT_FOUND');
+    if (current.kind !== input.kind) throw new Error('INVALID_OBSERVATION_MEDIA');
+    revokeDemoMediaUrls([id]);
+    const durable = await durableDemoMediaUri({ uri: input.uri, kind: input.kind, petId: current.petId, observationId: id, mimeType: input.mimeType });
+    const mediaInput = { ...input, uri: durable.uri, mimeType: durable.mimeType ?? input.mimeType, byteSize: durable.byteSize ?? input.byteSize };
+    const { previous, observation } = await updateDemoObservationMedia(id, mediaInput);
+    if (Platform.OS !== 'web') {
+      const root = FileSystem.documentDirectory;
+      const files = [previous.localPhotoUri, previous.localAudioUri, previous.localVideoUri];
+      for (const uri of files) {
+        if (!uri || uri === mediaInput.uri || !root) continue;
+        if (uri.startsWith(`${root}companion-photos/`) || uri.startsWith(`${root}companion-audio/`) || uri.startsWith(`${root}companion-videos/`)) await FileSystem.deleteAsync(uri, { idempotent: true });
+      }
+    }
+    await invalidate();
+    return observation;
+  };
   // Account mode has no DELETE /observations/:id. Do not pretend a server delete happened.
   const removeObservation = async (id: string) => {
     if (!demo) throw new Error('OBSERVATION_ACCOUNT_READONLY');
@@ -147,7 +168,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, removeObservation, removeConversation, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, replaceObservationMedia, removeObservation, removeConversation, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {
