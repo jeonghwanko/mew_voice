@@ -18,6 +18,7 @@ import { studio as c, type CatMood } from './appearance';
 import { MewIcon } from '../../ui/MewIcon';
 import { HomeMenu, type HomeMenuPage } from './HomeMenu';
 import { QuickAction } from './QuickAction';
+import { LatestObservation } from './LatestObservation';
 import { TodayCare } from './TodayCare';
 
 export default function CatStudio() {
@@ -111,7 +112,7 @@ export default function CatStudio() {
               <Pressable accessibilityRole="button" accessibilityLabel="함께할 고양이 선택" onPress={() => setPicker(true)} style={styles.petSelector}><Text style={styles.headerTitle}>{pet?.name ?? '나의 고양이'}</Text><Ionicons name="chevron-down" size={14} color={c.muted} /></Pressable>
               <Text style={styles.eyebrow}>{pet?.id === 'demo-momo' ? '모모는 지어낸 체험 프로필이에요' : companion.demo ? '체험 · 기록은 이 기기에만 남아요' : '오늘도 너와 함께'}</Text>
             </View>
-            <View style={[styles.stage, !editing && !keyboard && styles.stageWithCare, editing && !wide && (side === 'left' ? { marginLeft: 186 } : { marginRight: 186 })]}><CatStage focused={focused && !menuPage && !picker && !chatOpen} appearance={appearance.value} mood={mood} onPet={() => setPetting(true)} /></View>
+            <View style={[styles.stage, !editing && !keyboard && (pet ? styles.stageWithRecords : styles.stageWithCare), editing && !wide && (side === 'left' ? { marginLeft: 186 } : { marginRight: 186 })]}><CatStage focused={focused && !menuPage && !picker && !chatOpen} appearance={appearance.value} mood={mood} onPet={() => setPetting(true)} /></View>
             {!editing && <View style={[styles.quickActions, height < 700 && { gap: 8, top: 100 }]}>
               <QuickAction name="talk" label="말 걸기" hint="놀이용 야옹이에요. 말의 뜻을 번역하지 않아요." onPress={() => router.push('/meow')} />
               <QuickAction name="listen" label="울음 듣기" hint="고양이 울음 녹음하고 살펴보기" onPress={() => router.push({ pathname: '/capture', params: { mode: 'audio' } })} />
@@ -121,6 +122,7 @@ export default function CatStudio() {
               <Pressable accessibilityRole="button" accessibilityLabel="고양이 꾸미기" accessibilityState={{ expanded: editing }} onPress={() => setEditing(!editing)} style={[styles.roundTool, editing && styles.activeTool]}><MewIcon name="palette" size={22} color={editing ? c.surface : c.ink} /></Pressable>
             </View>
             {!editing && <View style={styles.sceneFoot}>
+              {!keyboard && <LatestObservation />}
               {!keyboard && <TodayCare />}
               <Pressable accessibilityRole="button" accessibilityLabel="고양이 쓰다듬기" onPress={() => setPetting(true)} style={styles.greeting}><View style={styles.dot} /><Text style={styles.sceneNote}>{petting ? '가상 고양이가 인사해요' : '터치해서 인사해요'}</Text></Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="글로 대화하기" onPress={() => setChatOpen(true)} style={styles.chatEntry}><MewIcon name="talk" size={21} /><Text style={styles.chatEntryText}>{thinking ? '답변을 준비하고 있어요…' : answer ? '도착한 답변 읽기' : pet ? `${pet.name}에게 궁금한 이야기` : '우리 아이와 대화하기'}</Text><MewIcon name="arrow" size={16} /></Pressable>
@@ -166,6 +168,7 @@ const styles = StyleSheet.create({
   sceneHeading: { position: 'absolute', top: 0, left: 24, zIndex: 1 },
   stage: { flex: 1, marginTop: 60, marginBottom: 104, marginLeft: 52 },
   stageWithCare: { marginBottom: 196 },
+  stageWithRecords: { marginBottom: 292 },
   quickActions: { position: 'absolute', left: 12, top: '24%', gap: 18, zIndex: 2 },
   sceneTools: { position: 'absolute', top: 5, right: 20, zIndex: 2 },
   roundTool: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFCF6E8', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF' },
