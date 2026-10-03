@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { MewIcon } from '../../ui/MewIcon';
 import { errorMessage } from '../../lib/api';
 import { HOME_OBSERVATION_EMPTY, homeObservationSummary } from '../companion/homeObservation';
+import { homeObservationHref } from '../companion/observationNavigation';
 import { VideoPreview } from '../companion/VideoPreview';
 import { useCompanion } from '../companion/useCompanion';
 import { studio as c } from './appearance';
@@ -25,7 +26,7 @@ export function LatestObservation() {
         : HOME_OBSERVATION_EMPTY;
   const open = () => {
     if (failed) { void companion.observations.refetch(); return; }
-    if (summary) router.push(`/observations/${summary.id}`);
+    if (summary) router.push(homeObservationHref(summary.id));
   };
   const current = summary ? loaded.find(item => item.id === summary.id) : undefined;
   const photoUri = current?.kind === 'PHOTO' ? current.localPhotoUri : undefined;
@@ -45,7 +46,7 @@ export function LatestObservation() {
       </View>
       {loading ? <ActivityIndicator color={c.accent} /> : null}
     </Pressable>
-    {summary ? <Pressable accessibilityRole="button" accessibilityLabel="관찰 자세히 보기" onPress={() => router.push(`/observations/${summary.id}`)} style={styles.open}><Text style={styles.openText}>보기</Text></Pressable> : null}
+    {summary ? <Pressable accessibilityRole="button" accessibilityLabel="관찰 자세히 보기" onPress={() => router.push(homeObservationHref(summary.id))} style={styles.open}><Text style={styles.openText}>보기</Text></Pressable> : null}
   </View>;
 }
 
