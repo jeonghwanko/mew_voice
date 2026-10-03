@@ -7,7 +7,7 @@ import { Body, Button, Card, Chip, Empty, ErrorNote, Field, Heading, Loading, Sc
 import { colors as c } from '../../src/ui/theme';
 import { newRequestId, useCompanion } from '../../src/features/companion/useCompanion';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
-import { conversationCitedCheckinLink, presentConversationAnswer } from '../../src/features/companion/daily';
+import { citedCaresForAnswer, conversationCitedCheckinLink, presentConversationAnswer } from '../../src/features/companion/daily';
 import { citedCheckinHref } from '../../src/features/companion/checkinNavigation';
 import { citedObservationHref } from '../../src/features/companion/observationNavigation';
 import { useCitedCheckinMoments } from '../../src/features/companion/useCheckins';
@@ -79,7 +79,7 @@ export default function Conversation() {
     const care = careMoments.get(id);
     return care?.status === 'saved' ? care.occurredAt : undefined;
   };
-  const shownAnswer = (answer: string | null | undefined, checkinIds?: readonly string[], observationIds?: readonly string[]) => presentConversationAnswer(answer, careMoments.get(checkinIds?.[0] ?? ''), reactionMoments.get(observationIds?.[0] ?? ''));
+  const shownAnswer = (answer: string | null | undefined, checkinIds?: readonly string[], observationIds?: readonly string[]) => presentConversationAnswer(answer, citedCaresForAnswer(checkinIds, careMoments), reactionMoments.get(observationIds?.[0] ?? ''));
   const answerText = shownAnswer(current?.answer, current?.citedCheckinIds, current?.citedObservationIds);
 
   const send = async () => {

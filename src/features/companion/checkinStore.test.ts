@@ -1,6 +1,6 @@
 import { changeDemo, getDemo, initialDemo } from './demo';
 import { saveDemoCheckin, updateDemoCheckin, deleteDemoCheckin } from './checkinStore';
-import { citedCareGoneText, citedCareName, conversationCitedCheckinLink, dayKey, formatDiaryDay, homeCitedCheckinLink, isToday, presentCareMention, presentCitedCareAnswer, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins } from './daily';
+import { citedCareGoneText, citedCareName, citedCaresForAnswer, conversationCitedCheckinLink, dayKey, formatDiaryDay, homeCitedCheckinLink, isToday, presentCareMention, presentCitedCareAnswer, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins, type CitedCareRecord } from './daily';
 import { formatDayKey } from './weeklySummary';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const draft = () => ({ petId: 'demo-momo', kind: 'PLAY' as const, note: '낚싯대 놀이', occurredAt: '2026-09-01T12:00:00.000Z', idempotencyKey: 'checkin-one' });
@@ -109,4 +109,50 @@ it('shows the current care note in a saved answer and drops a deleted quote', ()
   const reaction = '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
   expect(presentCitedCareAnswer(reaction, { status: 'gone' }, now)).toBe(reaction);
   expect(presentCitedCareAnswer(saved, undefined, now)).toBe(saved);
+});
+
+it('refreshes every cited care sentence and leaves sentences that are not those citations', () => {
+  const now = new Date('2026-09-10T00:30:00Z');
+  const saved = '질문과 맞는 저장 기록을 찾았어요. 오늘 돌봄에 “메모 남기기”라고 골랐고, “창가에서 햇빛을 쬐었어요”라고 적었어요. 2026년 9월 1일 돌봄에 “식사를 챙겼어요”라고 남겼어요. 한 번의 기록으로 이유를 확정할 수는 없어요. 오늘 돌봄이라고 메모했어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.';
+  const edited = presentCitedCareAnswer(saved, [
+    { status: 'saved', occurredAt: '2026-09-09T15:00:00Z', kind: 'NOTE', note: '창가에서 햇빛을 쬐었어요' },
+    { status: 'saved', occurredAt: '2026-09-09T14:59:59Z', kind: 'PLAY', note: '창가를 떠났어요' },
+  ], now);
+  expect(edited).toContain('오늘 돌봄에 “메모 남기기”라고 골랐고, “창가에서 햇빛을 쬐었어요”라고 적었어요');
+  expect(edited).toContain('2026년 9월 9일 돌봄에 “놀아줬어요”라고 골랐고, “창가를 떠났어요”라고 적었어요');
+  expect(edited).not.toContain('식사를 챙겼어요');
+  expect(edited).toContain('오늘 돌봄이라고 메모했어요');
+  expect(edited).toContain('실제 AI 분석이 아니에요');
+  expect(edited).toContain('고양이의 말을 번역한 것도 아니에요');
+  const goneLater = presentCitedCareAnswer(saved, [
+    { status: 'saved', occurredAt: '2026-09-09T15:00:00Z', kind: 'NOTE', note: '창가에서 햇빛을 쬐었어요' },
+    { status: 'gone' },
+  ], now);
+  expect(goneLater).toContain('창가에서 햇빛을 쬐었어요');
+  expect(goneLater).toContain(citedCareGoneText);
+  expect(goneLater).not.toContain('식사를 챙겼어요');
+  expect(goneLater).not.toContain('창가를 떠났어요');
+  const unreadLater = presentCitedCareAnswer(saved, [
+    { status: 'saved', occurredAt: '2026-09-09T15:00:00Z', kind: 'NOTE', note: '그대로예요' },
+    undefined,
+  ], now);
+  expect(unreadLater).toContain('“그대로예요”라고 적었어요');
+  expect(unreadLater).toContain('식사를 챙겼어요');
+  const extraSentence = `${saved} 돌봄 기록에 “특이사항 없어요”라고 남겼어요.`;
+  const firstOnly = presentCitedCareAnswer(extraSentence, { status: 'gone' }, now);
+  expect(firstOnly).toContain(citedCareGoneText);
+  expect(firstOnly).toContain('식사를 챙겼어요');
+  expect(firstOnly).toContain('특이사항 없어요');
+  expect(firstOnly).not.toContain('햇빛을 쬐었어요');
+  const moments = new Map<string, CitedCareRecord>([
+    ['care-1', { status: 'saved', occurredAt: '2026-09-09T15:00:00Z', kind: 'NOTE', note: '그대로예요' }],
+    ['care-2', { status: 'gone' }],
+  ]);
+  expect(citedCaresForAnswer(['care-1', 'missing', 'care-2'], moments)).toEqual([
+    moments.get('care-1'),
+    undefined,
+    moments.get('care-2'),
+  ]);
+  expect(citedCaresForAnswer(['missing'], moments)).toBeUndefined();
+  expect(citedCaresForAnswer(undefined, moments)).toBeUndefined();
 });

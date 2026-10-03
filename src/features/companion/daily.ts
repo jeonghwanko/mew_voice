@@ -73,18 +73,54 @@ export const citedCareGoneText = '인용했던 돌봄 기록은 지금 없어요
 
 const CITED_CARE_QUOTE = /(?:오늘 돌봄|\d{4}년 \d{1,2}월 \d{1,2}일 돌봄|돌봄 기록)에 “(?:놀아줬어요|식사를 챙겼어요|메모 남기기|특이사항 없어요|돌봄 기록)”라고 (?:골랐고, “[\s\S]*?”라고 적었어요|남겼어요)/;
 
-/**
- * First cited care sentence only, from the check-in as it is saved now.
- * A deleted check-in drops that quote. Later sentences and other turns stay.
- */
-export function presentCitedCareAnswer(text: string | null | undefined, care: CitedCareRecord | undefined, now = new Date()) {
-  if (!text || !care) return text ?? null;
-  const match = CITED_CARE_QUOTE.exec(text);
-  if (!match) return care.status === 'saved' ? presentCareMention(text, care.occurredAt, now) : text;
-  const replacement = care.status === 'gone'
+function citedCareSentence(care: CitedCareRecord, now: Date) {
+  return care.status === 'gone'
     ? citedCareGoneText
     : `${citedCareName(care.occurredAt, now)}에 ${citedCheckinQuote(care.kind, care.note)}`;
-  return text.slice(0, match.index) + replacement + text.slice(match.index + match[0].length);
+}
+
+/**
+ * Cited care in the same order as this answer’s check-in ids.
+ * An id that is not loaded yet stays absent so a later sentence does not move up.
+ * No loaded record means the stored answer is left alone.
+ */
+export function citedCaresForAnswer(
+  ids: readonly string[] | null | undefined,
+  moments: ReadonlyMap<string, CitedCareRecord>,
+): (CitedCareRecord | undefined)[] | undefined {
+  if (!ids?.length) return undefined;
+  const records = ids.map(id => moments.get(id));
+  return records.some(item => item != null) ? records : undefined;
+}
+
+/**
+ * Every cited care sentence, in check-in order, from the record as it is saved now.
+ * One record still rewrites only the first sentence. A deleted check-in drops that quote.
+ * A sentence with no loaded record, and anything that is not a cited care sentence, stays.
+ */
+export function presentCitedCareAnswer(
+  text: string | null | undefined,
+  care: CitedCareRecord | readonly (CitedCareRecord | undefined)[] | undefined,
+  now = new Date(),
+) {
+  if (!text || !care) return text ?? null;
+  const cares = Array.isArray(care) ? care : [care];
+  if (!cares.some(item => item != null)) return text;
+  const pattern = new RegExp(CITED_CARE_QUOTE.source, 'g');
+  const matches = [...text.matchAll(pattern)];
+  const first = cares[0];
+  if (!matches.length) return first?.status === 'saved' ? presentCareMention(text, first.occurredAt, now) : text;
+  let cursor = 0;
+  let shown = '';
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const start = match.index ?? 0;
+    shown += text.slice(cursor, start);
+    const record = cares[index];
+    shown += record ? citedCareSentence(record, now) : match[0];
+    cursor = start + match[0].length;
+  }
+  return shown + text.slice(cursor);
 }
 
 export type CitedReactionRecord =
@@ -157,8 +193,13 @@ export function resolveCitedReactionMap(input: {
   return map;
 }
 
-/** Care quote first, then the reaction quote. Each pass touches only its own first sentence. */
-export function presentConversationAnswer(text: string | null | undefined, care: CitedCareRecord | undefined, reaction: CitedReactionRecord | null | undefined, now = new Date()) {
+/** Every cited care sentence, then the first reaction sentence. Other sentences stay. */
+export function presentConversationAnswer(
+  text: string | null | undefined,
+  care: CitedCareRecord | readonly (CitedCareRecord | undefined)[] | undefined,
+  reaction: CitedReactionRecord | null | undefined,
+  now = new Date(),
+) {
   return presentCitedReactionAnswer(presentCitedCareAnswer(text, care, now), reaction);
 }
 
