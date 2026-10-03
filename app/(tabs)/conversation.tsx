@@ -7,9 +7,10 @@ import { Body, Button, Card, Chip, Empty, ErrorNote, Field, Heading, Loading, Sc
 import { colors as c } from '../../src/ui/theme';
 import { newRequestId, useCompanion } from '../../src/features/companion/useCompanion';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
-import { conversationCitedCheckinLink, presentCitedCareAnswer } from '../../src/features/companion/daily';
+import { conversationCitedCheckinLink, presentConversationAnswer } from '../../src/features/companion/daily';
 import { citedCheckinHref } from '../../src/features/companion/checkinNavigation';
 import { useCitedCheckinMoments } from '../../src/features/companion/useCheckins';
+import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
 import { api, errorMessage } from '../../src/lib/api';
 
 type ConversationList = { items: CompanionConversation[]; nextCursor: string | null };
@@ -66,13 +67,19 @@ export default function Conversation() {
     for (const item of history.data?.items ?? []) ids.push(...(item.citedCheckinIds ?? []));
     return ids;
   }, [current, history.data]);
+  const citedObservationIds = useMemo(() => {
+    const ids = [...(current?.citedObservationIds ?? [])];
+    for (const item of history.data?.items ?? []) ids.push(...(item.citedObservationIds ?? []));
+    return ids;
+  }, [current, history.data]);
   const careMoments = useCitedCheckinMoments(citedCheckinIds);
+  const reactionMoments = useCitedReactionMoments(citedObservationIds);
   const careAt = (id: string) => {
     const care = careMoments.get(id);
     return care?.status === 'saved' ? care.occurredAt : undefined;
   };
-  const shownAnswer = (answer: string | null | undefined, ids?: readonly string[]) => presentCitedCareAnswer(answer, careMoments.get(ids?.[0] ?? ''));
-  const answerText = shownAnswer(current?.answer, current?.citedCheckinIds);
+  const shownAnswer = (answer: string | null | undefined, checkinIds?: readonly string[], observationIds?: readonly string[]) => presentConversationAnswer(answer, careMoments.get(checkinIds?.[0] ?? ''), reactionMoments.get(observationIds?.[0] ?? ''));
+  const answerText = shownAnswer(current?.answer, current?.citedCheckinIds, current?.citedObservationIds);
 
   const send = async () => {
     if (!selectedPet || !message.trim()) return;
@@ -99,7 +106,7 @@ export default function Conversation() {
       </Card>}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
-      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => setActive(item)} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>; })}
+      {history.data?.items.map(item => { const preview = shownAnswer(item.answer, item.citedCheckinIds, item.citedObservationIds); return <Pressable key={item.id} accessibilityRole="button" onPress={() => setActive(item)} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{preview ? <Text numberOfLines={2} style={styles.historyAnswer}>{preview}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>; })}
       {!history.isLoading && !history.data?.items.length && (companion.demo
         ? <Empty title="아직 나눈 이야기가 없어요" detail="질문을 남기면 이 기기에만 기억돼요. 나갔다가 다시 들어와도 같은 질문과 답변을 읽을 수 있어요. 실제 AI 답변은 아니에요." />
         : <Empty title="아직 대화가 없어요" detail="첫 질문을 남기면 이곳에 기억돼요." />)}

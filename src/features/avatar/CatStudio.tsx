@@ -13,8 +13,9 @@ import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
 import { loadSavedConversations } from '../companion/conversationPages';
 import { homeConversationThread, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
-import { homeCitedCheckinLink, presentCitedCareAnswer } from '../companion/daily';
+import { homeCitedCheckinLink, presentConversationAnswer } from '../companion/daily';
 import { useCitedCheckinMoments } from '../companion/useCheckins';
+import { useCitedReactionMoments } from '../companion/citedReactions';
 import { AppearancePanel } from './AppearancePanel';
 import { CatStage } from './CatStage';
 import { useAppearance } from './useAppearance';
@@ -58,11 +59,13 @@ export default function CatStudio() {
   });
   const turns = useMemo(() => homeConversationThread(savedThreads.data?.items ?? [], pet?.id, current), [savedThreads.data, pet?.id, current]);
   const citedCheckinIds = useMemo(() => turns.flatMap(turn => turn.citedCheckinIds ?? []), [turns]);
+  const citedObservationIds = useMemo(() => turns.flatMap(turn => turn.citedObservationIds ?? []), [turns]);
   const careMoments = useCitedCheckinMoments(citedCheckinIds);
+  const reactionMoments = useCitedReactionMoments(citedObservationIds);
   const visibleTurns = useMemo(() => turns.map(turn => ({
     ...turn,
-    answer: presentCitedCareAnswer(turn.answer, careMoments.get(turn.citedCheckinIds?.[0] ?? '')),
-  })), [turns, careMoments]);
+    answer: presentConversationAnswer(turn.answer, careMoments.get(turn.citedCheckinIds?.[0] ?? ''), reactionMoments.get(turn.citedObservationIds?.[0] ?? '')),
+  })), [turns, careMoments, reactionMoments]);
   const thinking = busy || current?.status === 'QUEUED';
   const answer = thinking ? null : latestHomeAnswer(visibleTurns);
   const mood: CatMood = speaking ? 'speaking' : thinking ? 'thinking' : petting ? 'happy' : message ? 'listening' : 'idle';

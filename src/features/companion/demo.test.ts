@@ -1,6 +1,6 @@
 import type { CompanionCheckin, CompanionObservation } from '@findthem/shared';
 import { buildDemoObservation, clearDemoMemory, demoFromStorage, demoInference, groundedDemoReply, initialDemo, changeDemo, getDemo, saveDemoConversation, type FeedbackRecord } from './demo';
-import { citedCareGoneText, presentCitedCareAnswer } from './daily';
+import { citedCareGoneText, citedReactionFromFeedback, citedReactionGoneText, presentCitedCareAnswer, presentCitedReactionAnswer } from './daily';
 import { readDemo, writeDemo } from '../../core/storage';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const record = (id: string, petId: string, date: string): CompanionObservation => ({ id, petId, createdAt: date, completedAt: date, kind: 'PHOTO', question: '왜 울까요?', contextTags: [], status: 'ABSTAINED', failureCode: null, media: [], inference: null, feedback: [] });
@@ -182,5 +182,29 @@ describe('private demo memory', () => {
     expect(gone).toContain('실제 AI 분석이 아니에요');
     const reaction = groundedDemoReply('cat-a', [record('prior', 'cat-a', '2026-09-01T00:00:00Z')], [feedback('prior')], '장난감', [], now);
     expect(presentCitedCareAnswer(reaction.text, { status: 'gone' }, now)).toBe(reaction.text);
+  });
+
+  it('keeps the stored reaction sentence and shows the observation’s later reaction only when read again', async () => {
+    const toyObs = { ...record('toy', 'cat-a', '2026-09-03T00:00:00Z'), question: '장난감을 안 봐요', contextTags: ['거실에서'] };
+    const older: FeedbackRecord = { id: 'f-old', observationId: 'toy', action: '놀아줬어요', reaction: '장난감을 따라왔어요', note: null, happenedAt: '2026-09-03T12:00:00Z', createdAt: '2026-09-03T12:00:00Z' };
+    const later: FeedbackRecord = { id: 'f-later', observationId: 'toy', action: '창문을 열었어요', reaction: '다가왔어요', note: null, happenedAt: '2026-09-04T12:00:00Z', createdAt: '2026-09-04T12:00:00Z' };
+    await changeDemo(data => { data.observations = [toyObs]; data.feedback = [older]; data.conversations = []; data.checkins = []; });
+    const saved = await saveDemoConversation('cat-a', '오늘 어땠나요', 'thread-reaction', new Date('2026-09-04T00:00:00Z'));
+    expect(saved.citedObservationIds).toEqual(['toy']);
+    expect(saved.answer).toContain('“놀아줬어요” 이후 “장난감을 따라왔어요”라고 남겼어요');
+    await changeDemo(data => { data.feedback.push(later); });
+    const stored = (await getDemo()).conversations.find(item => item.id === 'thread-reaction');
+    expect(stored?.answer).toBe(saved.answer);
+    const shown = presentCitedReactionAnswer(stored?.answer, citedReactionFromFeedback([older, later]));
+    expect(shown).toContain('“창문을 열었어요” 이후 “다가왔어요”라고 남겼어요');
+    expect(shown).not.toContain('장난감을 따라왔어요');
+    expect(shown).toContain('실제 AI 분석이 아니에요');
+    await changeDemo(data => { data.observations = []; data.feedback = []; });
+    const kept = (await getDemo()).conversations.find(item => item.id === 'thread-reaction');
+    expect(kept?.answer).toBe(saved.answer);
+    const gone = presentCitedReactionAnswer(kept?.answer, { status: 'gone' });
+    expect(gone).toContain(citedReactionGoneText);
+    expect(gone).not.toContain('장난감을 따라왔어요');
+    expect(gone).not.toContain('창문을 열었어요');
   });
 });

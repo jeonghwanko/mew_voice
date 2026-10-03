@@ -87,6 +87,81 @@ export function presentCitedCareAnswer(text: string | null | undefined, care: Ci
   return text.slice(0, match.index) + replacement + text.slice(match.index + match[0].length);
 }
 
+export type CitedReactionRecord =
+  | { status: 'saved'; action: string; reaction: string }
+  | { status: 'gone' };
+
+/** Plain line when the reaction this answer cited is no longer saved. Not a new record. */
+export const citedReactionGoneText = '인용했던 반응 기록은 지금 없어요';
+
+const CITED_REACTION_QUOTE = /“[^“”]*” 이후 “[^“”]*”라고 남겼어요/;
+
+type ReactionFeedback = { id?: string; action?: string | null; reaction?: string | null; createdAt?: string | null };
+
+/**
+ * Newest saved reaction on one observation.
+ * Same order as the home card: createdAt, then id. A missing list is unknown, not deleted.
+ * An empty list, or only blank actions and reactions, means the saved reaction is gone.
+ */
+export function citedReactionFromFeedback(feedback: readonly ReactionFeedback[] | null | undefined): CitedReactionRecord | null {
+  if (feedback == null) return null;
+  const ranked = feedback.map((item, index) => ({ item, index }));
+  ranked.sort((a, b) => {
+    const time = (b.item.createdAt ?? '').localeCompare(a.item.createdAt ?? '');
+    if (time) return time;
+    const id = (b.item.id ?? '').localeCompare(a.item.id ?? '');
+    if (id) return id;
+    return b.index - a.index;
+  });
+  for (const { item } of ranked) {
+    const action = item.action?.trim() ?? '';
+    const reaction = item.reaction?.trim() ?? '';
+    if (action && reaction) return { status: 'saved', action, reaction };
+  }
+  return { status: 'gone' };
+}
+
+/**
+ * First cited reaction sentence only, from the observation as it is saved now.
+ * A deleted observation or reaction drops that quote. Later sentences and other turns stay.
+ */
+export function presentCitedReactionAnswer(text: string | null | undefined, reaction: CitedReactionRecord | null | undefined) {
+  if (!text || !reaction) return text ?? null;
+  const match = CITED_REACTION_QUOTE.exec(text);
+  if (!match) return text;
+  const replacement = reaction.status === 'gone'
+    ? citedReactionGoneText
+    : `“${reaction.action}” 이후 “${reaction.reaction}”라고 남겼어요`;
+  return text.slice(0, match.index) + replacement + text.slice(match.index + match[0].length);
+}
+
+
+/** List rows win. A finished list without the observation is gone. A failed extra read stays absent. */
+export function resolveCitedReactionMap(input: {
+  ids: readonly string[];
+  known: ReadonlyMap<string, CitedReactionRecord>;
+  loadedIds: ReadonlySet<string>;
+  listComplete: boolean;
+  extra: readonly { id: string; record: CitedReactionRecord | null }[];
+}) {
+  const map = new Map(input.known);
+  if (input.listComplete) {
+    for (const id of input.ids) {
+      if (!map.has(id) && !input.loadedIds.has(id)) map.set(id, { status: 'gone' });
+    }
+  }
+  for (const item of input.extra) {
+    if (!item.record || map.has(item.id)) continue;
+    map.set(item.id, item.record);
+  }
+  return map;
+}
+
+/** Care quote first, then the reaction quote. Each pass touches only its own first sentence. */
+export function presentConversationAnswer(text: string | null | undefined, care: CitedCareRecord | undefined, reaction: CitedReactionRecord | null | undefined, now = new Date()) {
+  return presentCitedReactionAnswer(presentCitedCareAnswer(text, care, now), reaction);
+}
+
 export function homeCitedCheckinLink(occurredAt: string | null | undefined, index: number, now = new Date()) {
   return `참고한 ${citedCareName(occurredAt, now)} ${index + 1} 보기 →`;
 }

@@ -102,11 +102,25 @@ export function useCompanion() {
   return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, removePet, retry, ask, invalidate };
 }
 
+export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {
+  if (demo) {
+    const state = await getDemo();
+    const observation = state.observations.find(item => item.id === id);
+    if (!observation) throw new Error('NOT_FOUND');
+    const [playable] = await playableDemoObservations([{ ...observation, feedback: state.feedback.filter(item => item.observationId === id) }]);
+    return playable;
+  }
+  return api.get<Observation>(`${base}/observations/${id}`);
+}
+
 export function useObservation(id: string) {
   const { key, demo, observations } = useCompanion();
-  return useQuery({ queryKey: [...key, 'observation', id], enabled: !!id, queryFn: async (): Promise<Observation> => {
-    if (demo) { const state = await getDemo(); const observation = state.observations.find(o => o.id === id); if (!observation) throw new Error('NOT_FOUND'); const [playable] = await playableDemoObservations([{ ...observation, feedback: state.feedback.filter(f => f.observationId === id) }]); return playable; }
-    return api.get<Observation>(`${base}/observations/${id}`);
-  }, initialData: () => observations.data?.pages.flatMap(page => page.items).find(o => o.id === id), refetchInterval: q => q.state.data && ['QUEUED', 'PROCESSING'].includes(q.state.data.status) ? 2500 : false });
+  return useQuery({
+    queryKey: [...key, 'observation', id],
+    enabled: !!id,
+    queryFn: () => loadObservationById(demo, id),
+    initialData: () => observations.data?.pages.flatMap(page => page.items).find(item => item.id === id),
+    refetchInterval: query => query.state.data && ['QUEUED', 'PROCESSING'].includes(query.state.data.status) ? 2500 : false,
+  });
 }
 
