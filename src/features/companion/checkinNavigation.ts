@@ -42,6 +42,17 @@ export function diaryCheckinHref(checkinId: string, petId?: string) {
   return `/checkin?id=${encodeURIComponent(id)}&returnTo=diary&petId=${encodeURIComponent(pet)}`;
 }
 
+/**
+ * New check-in started from one pet’s diary.
+ * Without that pet, the plain create route stays so a home start can still go home.
+ * The stored thread is not rewritten, and an existing check-in id is not invented.
+ */
+export function diaryNewCheckinHref(petId?: string) {
+  const pet = petId?.trim();
+  if (!pet) return '/checkin';
+  return `/checkin?returnTo=diary&petId=${encodeURIComponent(pet)}`;
+}
+
 /** Pet whose diary should reopen. A blank id is not a pet. */
 export function diaryPetTarget(input: { petId?: string | string[] }) {
   return firstParam(input.petId) ?? null;
