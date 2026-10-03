@@ -17,13 +17,21 @@ export const WEEKLY_PAGE_CAP = CONVERSATION_PAGE_CAP;
  * Stop when the 7-day window is covered, the cursor repeats, or WEEKLY_PAGE_CAP pages have been read.
  * A null nextCursor is the end of that list: do not synthesize another page from the last id.
  * truncated is true only when the walk stops with the window still open (cap or a repeated cursor).
+ * The returned nextCursor is the first page not read, or null when the list ended or the cursor would repeat.
  */
+export type WeekPageLoad<T> = {
+  items: T[];
+  truncated: boolean;
+  /** Next unread cursor, or null when the list ended or the cursor would repeat. */
+  nextCursor: string | null;
+};
+
 export async function loadPagesForWeek<T extends { id: string }>(
   fetchPage: (cursor: string | null) => Promise<CompanionListResponse<T>>,
   timeOf: (item: T) => string,
   now = new Date(),
   cap = WEEKLY_PAGE_CAP,
-): Promise<{ items: T[]; truncated: boolean }> {
+): Promise<WeekPageLoad<T>> {
   const startMs = weekWindow(now).startMs;
   const items: T[] = [];
   const seenIds = new Set<string>();
@@ -33,8 +41,9 @@ export async function loadPagesForWeek<T extends { id: string }>(
     const time = new Date(timeOf(item)).getTime();
     return Number.isFinite(time) && time < startMs;
   });
+  const stopped = (truncated: boolean, nextCursor: string | null): WeekPageLoad<T> => ({ items, truncated, nextCursor });
   for (let page = 0; page < cap; page += 1) {
-    if (requested.has(cursor)) return { items, truncated: !windowCovered() };
+    if (requested.has(cursor)) return stopped(!windowCovered(), null);
     requested.add(cursor);
     const result = await fetchPage(cursor);
     for (const item of result.items) {
@@ -43,12 +52,12 @@ export async function loadPagesForWeek<T extends { id: string }>(
       items.push(item);
     }
     const next = result.nextCursor;
-    if (!next) return { items, truncated: false };
-    if (windowCovered()) return { items, truncated: false };
-    if (requested.has(next)) return { items, truncated: true };
+    if (!next) return stopped(false, null);
+    if (windowCovered()) return stopped(false, next);
+    if (requested.has(next)) return stopped(true, null);
     cursor = next;
   }
-  return { items, truncated: !windowCovered() };
+  return stopped(!windowCovered(), cursor);
 }
 
 async function fetchObservationPage(demo: boolean, petId: string, cursor: string | null): Promise<CompanionListResponse<CompanionObservation>> {
@@ -81,5 +90,17 @@ export async function loadWeeklyRecords(demo: boolean, petId: string, now = new 
     checkins: checkins.items,
     observationsTruncated: observations.truncated,
     checkinsTruncated: checkins.truncated,
+    observationsNextCursor: observations.nextCursor,
+    checkinsNextCursor: checkins.nextCursor,
   };
+}
+
+/** One existing list page. A null cursor is the end: callers must not invent the next page. */
+export function loadObservationListPage(demo: boolean, petId: string, cursor: string | null) {
+  return fetchObservationPage(demo, petId, cursor);
+}
+
+/** One existing check-in page. Demo already returns the whole cat list with nextCursor null. */
+export function loadCheckinListPage(demo: boolean, petId: string, cursor: string | null) {
+  return fetchCheckinPage(demo, petId, cursor);
 }

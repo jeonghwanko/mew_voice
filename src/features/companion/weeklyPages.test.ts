@@ -46,6 +46,7 @@ test('a null account cursor does not invent rows and only the capped source stay
   expect(observations).toHaveBeenCalledWith(null);
   expect(loadedObservations.items).toHaveLength(1);
   expect(loadedObservations.truncated).toBe(false);
+  expect(loadedObservations.nextCursor).toBeNull();
   expect(checkins).toHaveBeenCalledTimes(3);
   expect(loadedCheckins.truncated).toBe(true);
   expect(loadedCheckins.items).toHaveLength(3);
@@ -73,5 +74,6 @@ test('a page that crosses the weekly window is not followed', async () => {
   const loaded = await loadPagesForWeek(fetchPage, item => item.createdAt, now);
   expect(fetchPage.mock.calls.map(call => call[0])).toEqual([null, 'older-page']);
   expect(loaded.truncated).toBe(false);
+  expect(loaded.nextCursor).toBe('ancient');
   expect(loaded.items.map(item => item.id)).toEqual(['new', 'old']);
 });

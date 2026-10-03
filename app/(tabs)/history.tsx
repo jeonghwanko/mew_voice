@@ -1,37 +1,113 @@
+import { useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, type Href } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import type { CompanionCheckin, CompanionObservation } from '@findthem/shared';
 import { MewIcon, type MewIconName } from '../../src/ui/MewIcon';
 import { studio as c } from '../../src/features/avatar/appearance';
 import { useCheckins, checkinLabels } from '../../src/features/companion/useCheckins';
+import { appendDiaryPage, diaryConversationRows, diaryIntro, mergeDiaryRecords } from '../../src/features/companion/diaryTimeline';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
-import { diaryConversationRows, diaryIntro } from '../../src/features/companion/diaryTimeline';
+import { loadCheckinListPage, loadObservationListPage, loadWeeklyRecords } from '../../src/features/companion/weeklyPages';
 import { errorMessage } from '../../src/lib/api';
+
+type OlderDiary = {
+  petId: string;
+  weekStamp: number;
+  observations: CompanionObservation[];
+  checkins: CompanionCheckin[];
+  observationsCursor: string | null;
+  checkinsCursor: string | null;
+  seenObservationCursors: string[];
+  seenCheckinCursors: string[];
+};
 
 export default function History() {
   const focused = useIsFocused();
   const checkins = useCheckins();
+  const petId = checkins.activePet?.id;
+  const [older, setOlder] = useState<OlderDiary | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<unknown>(null);
   const threads = useQuery({
-    queryKey: [...checkins.key, 'conversations', checkins.activePet?.id],
-    enabled: !!checkins.activePet,
-    queryFn: () => loadSavedConversations(checkins.demo, checkins.activePet!.id),
+    queryKey: [...checkins.key, 'conversations', petId],
+    enabled: !!petId,
+    queryFn: () => loadSavedConversations(checkins.demo, petId!),
   });
-  const savedThreads = diaryConversationRows(threads.data?.items ?? [], checkins.activePet?.id);
-  const observations = checkins.observations.data?.pages.flatMap(page => page.items) ?? [];
+  const week = useQuery({
+    queryKey: [...checkins.key, 'weekly-window', petId, checkins.demo],
+    enabled: !!petId,
+    queryFn: () => loadWeeklyRecords(checkins.demo, petId!),
+  });
+  const savedThreads = diaryConversationRows(threads.data?.items ?? [], petId);
+  const olderForPet = older && older.petId === petId && older.weekStamp === week.dataUpdatedAt ? older : null;
+  const observationCursor = olderForPet ? olderForPet.observationsCursor : (week.data?.observationsNextCursor ?? null);
+  const checkinCursor = olderForPet ? olderForPet.checkinsCursor : (week.data?.checkinsNextCursor ?? null);
+  const waitingForWeek = !!petId && !week.data && week.isLoading;
+  const observations = waitingForWeek ? [] : mergeDiaryRecords([
+    checkins.observations.data?.pages.flatMap(page => page.items) ?? [],
+    week.data?.observations ?? [],
+    olderForPet?.observations ?? [],
+  ]);
+  const care = waitingForWeek ? [] : mergeDiaryRecords([
+    checkins.items,
+    week.data?.checkins ?? [],
+    olderForPet?.checkins ?? [],
+  ]);
   const observationLabel = (kind: string) => kind === 'AUDIO' ? '울음 관찰' : kind === 'VIDEO' ? '짧은 영상 기록' : '사진 관찰';
   const rows = [
-    ...checkins.items.map(item => ({ id: `checkin-${item.id}`, at: item.occurredAt, label: checkinLabels[item.kind], note: item.note, icon: 'diary' as MewIconName, target: `/checkin?id=${item.id}` })),
+    ...care.map(item => ({ id: `checkin-${item.id}`, at: item.occurredAt, label: checkinLabels[item.kind], note: item.note, icon: 'diary' as MewIconName, target: `/checkin?id=${item.id}` })),
     ...observations.map(item => ({ id: `observation-${item.id}`, at: item.createdAt, label: item.question || observationLabel(item.kind), note: item.inference?.observation[0] ?? null, icon: 'cat' as MewIconName, target: `/observations/${item.id}` })),
     ...savedThreads.map(item => ({ ...item, icon: 'talk' as MewIconName })),
   ].sort((a, b) => b.at.localeCompare(a.at));
-  const hasMore = !!checkins.list.hasNextPage || !!checkins.observations.hasNextPage;
-  const loadingMore = checkins.list.isFetchingNextPage || checkins.observations.isFetchingNextPage;
-  const loading = checkins.list.isLoading || checkins.observations.isLoading || threads.isLoading;
-  const error = checkins.list.error ?? checkins.observations.error ?? checkins.pets.error ?? threads.error;
+  const hasMore = !!observationCursor || !!checkinCursor;
+  const loading = checkins.list.isLoading || checkins.observations.isLoading || threads.isLoading || waitingForWeek;
+  const error = checkins.list.error ?? checkins.observations.error ?? checkins.pets.error ?? threads.error ?? week.error ?? olderError;
   const rereadNote = threads.isLoading ? '저장한 대화를 불러오고 있어요' : savedThreads.length ? '이전 질문과 답변을 다시 읽어요' : '아직 다시 읽을 대화가 없어요';
+  const loadOlder = async () => {
+    if (!petId || loadingOlder || (!observationCursor && !checkinCursor)) return;
+    const demo = checkins.demo;
+    const weekStamp = week.dataUpdatedAt;
+    const obsCursor = observationCursor;
+    const careCursor = checkinCursor;
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      const [obsPage, carePage] = await Promise.all([
+        obsCursor ? loadObservationListPage(demo, petId, obsCursor) : Promise.resolve(null),
+        careCursor ? loadCheckinListPage(demo, petId, careCursor) : Promise.resolve(null),
+      ]);
+      setOlder(current => {
+        const base = current && current.petId === petId && current.weekStamp === weekStamp ? current : {
+          petId, weekStamp, observations: [], checkins: [],
+          observationsCursor: obsCursor, checkinsCursor: careCursor,
+          seenObservationCursors: [], seenCheckinCursors: [],
+        };
+        const nextObservations = obsPage && obsCursor
+          ? appendDiaryPage(base.observations, obsPage, obsCursor, base.seenObservationCursors)
+          : { items: base.observations, nextCursor: base.observationsCursor, seenCursors: base.seenObservationCursors };
+        const nextCheckins = carePage && careCursor
+          ? appendDiaryPage(base.checkins, carePage, careCursor, base.seenCheckinCursors)
+          : { items: base.checkins, nextCursor: base.checkinsCursor, seenCursors: base.seenCheckinCursors };
+        return {
+          petId, weekStamp,
+          observations: nextObservations.items,
+          checkins: nextCheckins.items,
+          observationsCursor: nextObservations.nextCursor,
+          checkinsCursor: nextCheckins.nextCursor,
+          seenObservationCursors: nextObservations.seenCursors,
+          seenCheckinCursors: nextCheckins.seenCursors,
+        };
+      });
+    } catch (cause) {
+      setOlderError(cause);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
   return <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
     {focused && <StatusBar style="dark" />}
     <ScrollView contentContainerStyle={styles.content}>
@@ -43,10 +119,10 @@ export default function History() {
       <Text style={styles.section}>{checkins.activePet ? `${checkins.activePet.name}의 일기` : '우리 아이의 일기'}</Text>
       <Text style={styles.body}>{diaryIntro(checkins.demo)}</Text>
       {loading && <ActivityIndicator accessibilityLabel="기록 불러오는 중" style={{ marginVertical: 24 }} color={c.accent} />}
-      {error ? <View style={styles.empty}><Text accessibilityRole="alert" style={styles.error}>{errorMessage(error)}</Text><Pressable accessibilityRole="button" onPress={() => { void checkins.list.refetch(); void checkins.observations.refetch(); void checkins.pets.refetch(); void threads.refetch(); }} style={styles.add}><Text style={styles.addText}>다시 불러오기</Text></Pressable></View> : null}
+      {error ? <View style={styles.empty}><Text accessibilityRole="alert" style={styles.error}>{errorMessage(error)}</Text><Pressable accessibilityRole="button" onPress={() => { setOlderError(null); void checkins.list.refetch(); void checkins.observations.refetch(); void checkins.pets.refetch(); void threads.refetch(); void week.refetch(); }} style={styles.add}><Text style={styles.addText}>다시 불러오기</Text></Pressable></View> : null}
       {rows.map(row => <Pressable key={row.id} accessibilityRole="button" onPress={() => router.push(row.target as Href)} style={styles.row}><View style={styles.icon}><MewIcon name={row.icon} size={20} /></View><View style={{ flex: 1 }}><Text style={styles.label}>{row.label}</Text>{row.note && <Text style={styles.note} numberOfLines={2}>{row.note}</Text>}<Text style={styles.time}>{new Date(row.at).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Seoul' })}</Text></View><MewIcon name="arrow" size={16} color={c.muted} /></Pressable>)}
       {!rows.length && !loading && !error && <View style={styles.empty}><MewIcon name="diary" size={46} /><Text style={styles.section}>{checkins.activePet ? '첫 페이지를 함께 채워요' : '기록할 아이를 등록해 주세요'}</Text><Text style={styles.body}>오늘 함께한 작은 순간부터 남겨 보세요.</Text><Pressable accessibilityRole="button" onPress={() => router.push(checkins.activePet ? '/checkin' : '/pets/new')} style={styles.add}><Text style={styles.addText}>{checkins.activePet ? '오늘 기록하기' : '우리 아이 등록하기'}</Text></Pressable></View>}
-      {hasMore && <Pressable accessibilityRole="button" disabled={loadingMore} onPress={() => { if (checkins.observations.hasNextPage) void checkins.observations.fetchNextPage(); if (checkins.list.hasNextPage) void checkins.list.fetchNextPage(); }} style={styles.more}><Text style={styles.label}>{loadingMore ? '불러오는 중…' : '이전 기록 더 보기'}</Text></Pressable>}
+      {hasMore && <Pressable accessibilityRole="button" disabled={loadingOlder} onPress={() => void loadOlder()} style={styles.more}><Text style={styles.label}>{loadingOlder ? '불러오는 중…' : '이전 기록 더 보기'}</Text></Pressable>}
     </ScrollView>
   </SafeAreaView>;
 }
@@ -61,4 +137,3 @@ const styles = StyleSheet.create({
   label: { color: c.ink, fontSize: 15, fontWeight: '600' }, note: { color: c.muted, fontSize: 13, marginTop: 4, lineHeight: 20 }, time: { color: c.accent, fontSize: 11, marginTop: 7 },
   empty: { alignItems: 'center', paddingVertical: 36, gap: 16 }, error: { color: c.error, fontSize: 13 }, more: { padding: 18, alignItems: 'center', marginTop: 12 },
 });
-
