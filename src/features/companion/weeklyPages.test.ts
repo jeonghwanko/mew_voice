@@ -1,5 +1,5 @@
 import { api } from '../../lib/api';
-import { kstDayStartMs, todayCheckinSummary, todayCheckins } from './daily';
+import { kstDayStartMs, todayCareTruncationNote, todayCheckinSummary, todayCheckins } from './daily';
 import { checkinListPath, observationListPath, pageObservations } from './observationPages';
 import { summarizeWeek } from './weeklySummary';
 import { WEEKLY_PAGE_CAP, loadPagesForWeek, loadTodayCheckins } from './weeklyPages';
@@ -108,6 +108,7 @@ test('today care follows check-in pages until a row is before today KST', async 
   expect(today.map(item => item.id)).not.toContain('yesterday');
   expect(todayCheckinSummary(todayCheckins(first, 'cat-a', todayNow))?.detail).not.toContain('식사를 챙겼어요');
   expect(todayCheckinSummary(today)?.detail).toContain('식사를 챙겼어요');
+  expect(todayCareTruncationNote(loaded.truncated)).toBe('');
 });
 
 test('a null check-in cursor does not add today rows past that page', async () => {
@@ -119,6 +120,7 @@ test('a null check-in cursor does not add today rows past that page', async () =
   expect(loaded.items.map(item => item.id)).toEqual(['only']);
   expect(loaded.nextCursor).toBeNull();
   expect(loaded.truncated).toBe(false);
+  expect(todayCareTruncationNote(loaded.truncated)).toBe('');
 });
 
 test('today care stops on a repeated cursor and at the diary page cap', async () => {
@@ -129,6 +131,7 @@ test('today care stops on a repeated cursor and at the diary page cap', async ()
   expect(repeated).toHaveBeenCalledTimes(2);
   expect(stuck.truncated).toBe(true);
   expect(stuck.nextCursor).toBeNull();
+  expect(todayCareTruncationNote(stuck.truncated)).toBe('아직 불러오지 않은 오늘의 나중 기록은 이 카드에 없어요.');
   let n = 0;
   const capped = await loadPagesForWeek(async () => {
     const id = `id-${n}`;
@@ -138,4 +141,6 @@ test('today care stops on a repeated cursor and at the diary page cap', async ()
   expect(capped.items).toHaveLength(WEEKLY_PAGE_CAP);
   expect(capped.truncated).toBe(true);
   expect(capped.nextCursor).toBe(`cursor-${WEEKLY_PAGE_CAP}`);
+  expect(todayCareTruncationNote(capped.truncated)).toContain('오늘의 나중 기록');
+  expect(todayCareTruncationNote(false)).toBe('');
 });

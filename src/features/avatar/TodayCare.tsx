@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { MewIcon } from '../../ui/MewIcon';
 import { errorMessage } from '../../lib/api';
-import { dayKey, todayCheckinSummary, todayCheckins } from '../companion/daily';
+import { dayKey, todayCareTruncationNote, todayCheckinSummary, todayCheckins } from '../companion/daily';
 import { useCheckins } from '../companion/useCheckins';
 import { loadTodayCheckins } from '../companion/weeklyPages';
 import { studio as c } from './appearance';
@@ -20,6 +20,7 @@ export function TodayCare() {
   });
   const today = todayCheckins(walked.data?.items ?? [], pet?.id);
   const summary = todayCheckinSummary(today);
+  const truncationNote = todayCareTruncationNote(walked.data?.truncated === true);
   const loading = !!pet && walked.isLoading && today.length === 0;
   const failed = !!pet && walked.isError && today.length === 0;
   const line = !pet
@@ -35,15 +36,17 @@ export function TodayCare() {
     else router.push('/checkin');
   };
   const add = () => router.push(pet ? '/checkin' : '/pets/new');
-  const label = summary
+  const labelBase = summary
     ? `오늘의 돌봄, ${summary.title}. ${summary.detail}`
     : `오늘의 돌봄, ${line.replace('\n', ', ')}`;
+  const label = truncationNote ? `${labelBase} ${truncationNote}` : labelBase;
   return <View style={styles.card}>
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={open} style={styles.main}>
       <MewIcon name="diary" size={22} color={c.accent} />
       <View style={styles.copy}>
         <Text style={styles.kicker}>오늘의 돌봄</Text>
         <Text style={styles.body} numberOfLines={2}>{line}</Text>
+        {truncationNote ? <Text style={styles.hint}>{truncationNote}</Text> : null}
         {failed ? <Text style={styles.hint}>{errorMessage(walked.error)}</Text> : null}
       </View>
       {loading ? <ActivityIndicator color={c.accent} /> : null}

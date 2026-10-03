@@ -36,6 +36,14 @@ function checkinLabel(kind: string) {
   return kind in checkinLabels ? checkinLabels[kind as CompanionCheckinKind] : '돌봄 기록';
 }
 
+/**
+ * Plain note when today's care walk stopped before a row from before today.
+ * Empty when the list ended or a pre-today row was reached. Same honesty as the weekly page note.
+ */
+export function todayCareTruncationNote(truncated: boolean) {
+  return truncated ? '아직 불러오지 않은 오늘의 나중 기록은 이 카드에 없어요.' : '';
+}
+
 /** Home copy for the selected cat's care records. Null means nothing was saved today. */
 export function todayCheckinSummary(items: readonly { kind: string; note?: string | null }[]) {
   const latest = items[0];
