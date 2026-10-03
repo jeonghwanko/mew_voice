@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import type { CompanionConversation } from '@findthem/shared';
@@ -82,6 +82,22 @@ export default function Conversation() {
   const shownAnswer = (answer: string | null | undefined, checkinIds?: readonly string[], observationIds?: readonly string[]) => presentConversationAnswer(answer, citedCaresForAnswer(checkinIds, careMoments), citedReactionsForAnswer(observationIds, reactionMoments));
   const answerText = shownAnswer(current?.answer, current?.citedCheckinIds, current?.citedObservationIds);
 
+  const removeThis = () => {
+    if (!current) return;
+    if (!companion.demo) { setError(errorMessage(new Error('CONVERSATION_ACCOUNT_READONLY'))); return; }
+    const id = current.id;
+    const execute = () => {
+      setBusy(true); setError('');
+      void companion.removeConversation(id).then(async () => {
+        setActive(prev => prev?.id === id ? null : prev);
+        await history.refetch();
+      }).catch(cause => setError(errorMessage(cause))).finally(() => setBusy(false));
+    };
+    const copy = '이 질문과 답변을 삭제할까요? 삭제한 기록은 되돌릴 수 없어요.';
+    if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; }
+    Alert.alert('대화를 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
+  };
+
   const send = async () => {
     if (!selectedPet || !message.trim()) return;
     setBusy(true); setError('');
@@ -104,6 +120,7 @@ export default function Conversation() {
       {current && <Card accent><Text style={styles.question}>“{current.question}”</Text>{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}
         {citations.map((id, index) => <Pressable key={id} accessibilityRole="link" onPress={() => current && router.push(citedObservationHref(id, current.id, selectedPet.id))}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
         {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedCheckinHref(id, current.id, selectedPet.id))}><Text style={styles.link}>{conversationCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
+        {companion.demo ? <Button title="이 대화 삭제" danger disabled={busy} onPress={removeThis} /> : <Body muted>이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.</Body>}
       </Card>}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
