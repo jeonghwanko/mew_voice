@@ -136,3 +136,4 @@ CLI trigger/build 사용 시 MEW_VOICE_GIT_URL 환경변수에 새 Git SSH URL�
 ## 공개 교육용 저장소 전환
 
 원격: https://github.com/jeonghwanko/mew_voice. 교육용 소스 공개 라이선스 적용. 제3자 모델은 원래 라이선스 유지. Jenkins SRC_GIT_URL 기본값은 새 HTTPS URL이며 MEW_VOICE_GIT_URL은 선택적 재정의다. source/ 루트에서 설치·검증·prebuild 후 Gradle로 빌드한다. 앱 식별자·서명은 유지한다.
+2026-10-03 완료: 공개 저장소에 초기 소스 푸시, Jenkins 서버 문법 검증·동기화·설정 재조회 완료. findthem-mobile 작업은 새 mew_voice HTTPS URL과 프로젝트 루트 source/를 사용한다. Jenkins 빌드·스토어 업로드는 시작하지 않았다.

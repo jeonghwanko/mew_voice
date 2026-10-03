@@ -461,3 +461,4 @@ fullbody-fit의 기존 뒷발 잔여 파편3개를 제거하고 주 상체와 �
 ## 공개 교육용 저장소 전환
 
 원격: https://github.com/jeonghwanko/mew_voice. 교육용 소스 공개 라이선스 적용. 제3자 모델은 원래 라이선스 유지. Jenkins SRC_GIT_URL 기본값은 새 HTTPS URL이며 MEW_VOICE_GIT_URL은 선택적 재정의다. source/ 루트에서 설치·검증·prebuild 후 Gradle로 빌드한다. 앱 식별자·서명은 유지한다.
+2026-10-03 완료: 교육용 라이선스로 공개 Git 저장소 게시 및 원격 Jenkins 소스 전환을 완료했다. Jenkins 설정 재조회에서 기존 FindThem checkout 제거와 source/ 루트 적용을 확인했다.
