@@ -54,3 +54,12 @@ export function checkinContinueHref(input: CheckinExitInput): Exclude<ReturnType
   const next = checkinExitHref(input);
   return next === '/' ? null : next;
 }
+
+/**
+ * A cited check-in that cannot be loaded, or belongs to another pet.
+ * The home chat or the conversation tab returns to that stored question.
+ * Without that question, the record list stays. The thread is not rewritten.
+ */
+export function checkinUnavailableHref(input: CheckinExitInput): NonNullable<ReturnType<typeof checkinContinueHref>> | '/history' {
+  return checkinContinueHref(input) ?? '/history';
+}

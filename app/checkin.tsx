@@ -5,7 +5,7 @@ import type { CompanionCheckinKind } from '@findthem/shared';
 import { Body, Button, Card, Chip, ErrorNote, Field, Heading, Loading, Screen, s } from '../src/ui/components';
 import { colors as c } from '../src/ui/theme';
 import { useCheckin, useCheckins, checkinLabels } from '../src/features/companion/useCheckins';
-import { checkinContinueHref, checkinExitHref } from '../src/features/companion/checkinNavigation';
+import { checkinContinueHref, checkinExitHref, checkinUnavailableHref } from '../src/features/companion/checkinNavigation';
 import { newRequestId } from '../src/features/companion/useCompanion';
 import { sessionStorage } from '../src/core/storage';
 import { useSession } from '../src/core/session';
@@ -43,6 +43,7 @@ export default function Checkin() {
   useEffect(() => { if (loadedKey === key) void sessionStorage.set(key, JSON.stringify(draft)).catch(() => undefined); }, [draft, key, loadedKey]);
   const leave = () => { router.replace(checkinExitHref(params)); };
   const resumeLater = () => { const next = checkinContinueHref(params); if (next) router.replace(next); else router.back(); };
+  const leaveUnavailable = () => { router.replace(checkinUnavailableHref(params)); };
   const save = async () => {
     if (!pet) return; if (editMode && (!existing.data || existing.data.petId !== pet.id)) { setError('수정할 기록을 다시 불러온 뒤 저장해 주세요.'); return; } const occurredAt = parseKst(draft.occurredText); if (!occurredAt) { setError('발생 시각을 2026-09-10 19:20 형식으로 입력해 주세요.'); return; }
     if (draft.kind === 'NOTE' && !draft.note.trim()) { setError('메모 남기기에는 내용을 적어 주세요.'); return; }
@@ -55,7 +56,7 @@ export default function Checkin() {
   };
   const reload = () => { setConflict(false); void existing.refetch(); };
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen title={pet ? `${pet.name}와\n어떤 시간을 보냈나요?` : '오늘의 기록'} subtitle={params.id ? 'EDIT CHECK-IN' : '10-SECOND CHECK-IN'}>
-    {!pet ? <Card><Heading>먼저 우리 아이를 선택해 주세요</Heading><Button title="우리 아이 화면으로" onPress={() => router.replace('/')} /></Card> : editMode && existing.isLoading ? <Loading /> : editMode && existing.isError ? <Card><Heading>기록을 불러오지 못했어요</Heading><ErrorNote message={errorMessage(existing.error)} /><Button title="다시 불러오기" secondary onPress={() => void existing.refetch()} /></Card> : editMode && !existing.data ? <Card><Heading>수정할 기록을 찾을 수 없어요</Heading><Body muted>새 기록을 만들지 않았어요. 목록에서 다시 선택해 주세요.</Body><Button title="기록 목록으로" secondary onPress={() => router.replace('/history')} /></Card> : existing.data && existing.data.petId !== pet.id ? <Card><Heading>다른 아이의 기록이에요</Heading><Body muted>현재 선택한 아이의 기록만 수정할 수 있어요.</Body><Button title="기록 목록으로" secondary onPress={() => router.replace('/history')} /></Card> : <>
+    {!pet ? <Card><Heading>먼저 우리 아이를 선택해 주세요</Heading><Button title="우리 아이 화면으로" onPress={() => router.replace('/')} /></Card> : editMode && existing.isLoading ? <Loading /> : editMode && existing.isError ? <Card><Heading>기록을 불러오지 못했어요</Heading><ErrorNote message={errorMessage(existing.error)} /><Button title="다시 불러오기" secondary onPress={() => void existing.refetch()} /></Card> : editMode && !existing.data ? <Card><Heading>수정할 기록을 찾을 수 없어요</Heading><Body muted>새 기록을 만들지 않았어요. 목록에서 다시 선택해 주세요.</Body><Button title="기록 목록으로" secondary onPress={leaveUnavailable} /></Card> : existing.data && existing.data.petId !== pet.id ? <Card><Heading>다른 아이의 기록이에요</Heading><Body muted>현재 선택한 아이의 기록만 수정할 수 있어요.</Body><Button title="기록 목록으로" secondary onPress={leaveUnavailable} /></Card> : <>
       <Body muted>사진 없이도 괜찮아요. 직접 보고 해 본 일을 저장할 수 있어요. AI 분석 없이 보호자 기록으로만 남습니다.</Body>
       {existing.isLoading && !!params.id ? <Loading /> : <><Heading>무엇을 했나요?</Heading><View style={s.row}>{kinds.map(kind => <Chip key={kind} label={checkinLabels[kind]} selected={draft.kind === kind} onPress={() => !busy && setDraft(current => ({ ...current, kind }))} />)}</View>
       {draft.kind === 'CHECKED' && <Card accent><Body>‘특이사항 없어요’는 이 시점에 보호자가 확인한 기록이에요. 하루 전체의 건강이나 기분 판정은 아니에요.</Body></Card>}

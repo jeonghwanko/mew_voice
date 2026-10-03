@@ -1,4 +1,4 @@
-import { checkinContinueHref, checkinExitHref, citedCheckinHref } from './checkinNavigation';
+import { checkinContinueHref, checkinExitHref, checkinUnavailableHref, citedCheckinHref } from './checkinNavigation';
 
 it('returns to the saved conversation after a cited check-in, and home otherwise', () => {
   expect(citedCheckinHref('care-1', 'thread-1', 'demo-momo')).toBe('/checkin?id=care-1&returnTo=conversation&conversationId=thread-1&petId=demo-momo');
@@ -40,4 +40,21 @@ it('returns to the opening question when leaving a check-in without saving', () 
   expect(checkinContinueHref({ returnTo: 'home', conversationId: '   ', petId: 'demo-momo' })).toBeNull();
   expect(checkinContinueHref({ returnTo: 'conversation' })).toBeNull();
   expect(checkinContinueHref({ returnTo: 'conversation', conversationId: '   ' })).toBeNull();
+});
+
+it('returns to the opening question when a cited check-in is missing or belongs to another pet', () => {
+  expect(checkinUnavailableHref({ returnTo: 'home', conversationId: 'thread-1', petId: 'demo-momo' })).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(checkinUnavailableHref({ returnTo: 'home', conversationId: 'thread-1' })).toEqual({ pathname: '/', params: { conversationId: 'thread-1' } });
+  expect(checkinUnavailableHref({ returnTo: ['home'], conversationId: ['thread-1'], petId: ['demo-momo'] })).toEqual({ pathname: '/', params: { conversationId: 'thread-1', petId: 'demo-momo' } });
+  expect(checkinUnavailableHref({ returnTo: 'conversation', conversationId: 'thread-1', petId: 'demo-momo' })).toBe('/(tabs)/conversation?conversationId=thread-1&petId=demo-momo');
+  expect(checkinUnavailableHref({ returnTo: 'conversation', conversationId: 'thread-1' })).toBe('/(tabs)/conversation?conversationId=thread-1');
+  expect(checkinUnavailableHref({ returnTo: ['conversation'], conversationId: ['thread-1'], petId: ['demo-momo'] })).toBe('/(tabs)/conversation?conversationId=thread-1&petId=demo-momo');
+  expect(checkinUnavailableHref({ returnTo: 'home', conversationId: 'thread 1', petId: 'pet 1' })).toEqual({ pathname: '/', params: { conversationId: 'thread 1', petId: 'pet 1' } });
+  expect(checkinUnavailableHref({ returnTo: 'conversation', conversationId: 'thread 1', petId: 'pet 1' })).toBe('/(tabs)/conversation?conversationId=thread%201&petId=pet%201');
+  expect(checkinUnavailableHref({})).toBe('/history');
+  expect(checkinUnavailableHref({ returnTo: 'history', conversationId: 'thread-1', petId: 'demo-momo' })).toBe('/history');
+  expect(checkinUnavailableHref({ returnTo: 'home' })).toBe('/history');
+  expect(checkinUnavailableHref({ returnTo: 'home', conversationId: '   ', petId: 'demo-momo' })).toBe('/history');
+  expect(checkinUnavailableHref({ returnTo: 'conversation' })).toBe('/history');
+  expect(checkinUnavailableHref({ returnTo: 'conversation', conversationId: '   ' })).toBe('/history');
 });
