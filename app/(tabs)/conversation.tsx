@@ -9,6 +9,7 @@ import { newRequestId, useCompanion } from '../../src/features/companion/useComp
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { conversationCitedCheckinLink, presentConversationAnswer } from '../../src/features/companion/daily';
 import { citedCheckinHref } from '../../src/features/companion/checkinNavigation';
+import { citedObservationHref } from '../../src/features/companion/observationNavigation';
 import { useCitedCheckinMoments } from '../../src/features/companion/useCheckins';
 import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
 import { api, errorMessage } from '../../src/lib/api';
@@ -101,7 +102,7 @@ export default function Conversation() {
       <ErrorNote message={error || (pending.error ? errorMessage(pending.error) : null)} />
       <Button title={companion.demo ? '기록에서 찾아보기' : '기록을 바탕으로 물어보기'} busy={busy} disabled={!message.trim()} icon="send-outline" onPress={() => void send()} />
       {current && <Card accent><Text style={styles.question}>“{current.question}”</Text>{current.status === 'QUEUED' ? <View style={{ gap: 8 }}><Loading /><Body muted>기록을 안전하게 살펴보고 있어요.</Body></View> : current.status === 'FAILED' ? <Body>답변을 준비하지 못했어요. 잠시 후 다시 질문해 주세요.</Body> : <Body>{answerText ?? '아직 답변이 준비되지 않았어요.'}</Body>}
-        {citations.map((id, index) => <Pressable key={id} accessibilityRole="link" onPress={() => router.push(`/observations/${id}`)}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
+        {citations.map((id, index) => <Pressable key={id} accessibilityRole="link" onPress={() => current && router.push(citedObservationHref(id, current.id, selectedPet.id))}><Text style={styles.link}>근거가 된 관찰 기록 {index + 1} 보기 →</Text></Pressable>)}
         {(current?.citedCheckinIds ?? []).map((id, index) => <Pressable key={`checkin-${id}`} accessibilityRole="link" onPress={() => current && router.push(citedCheckinHref(id, current.id, selectedPet.id))}><Text style={styles.link}>{conversationCitedCheckinLink(careAt(id), index)}</Text></Pressable>)}
       </Card>}
       <Heading>이전 대화</Heading>

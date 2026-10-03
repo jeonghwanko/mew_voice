@@ -7,6 +7,7 @@ import { API_BASE, authHeaders, errorMessage } from '../../src/lib/api';
 import { displayDate } from '../../src/features/companion/RecordCard';
 import { VideoPreview } from '../../src/features/companion/VideoPreview';
 import { AudioPreview } from '../../src/features/companion/AudioPreview';
+import { observationExitHref } from '../../src/features/companion/observationNavigation';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> }>();
@@ -18,10 +19,10 @@ function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   return source ? <Image accessibilityLabel="이 관찰에 첨부한 사진" source={source} style={{ width: '100%', height: 230, borderRadius: 22, marginBottom: 18 }} /> : null;
 }
 export default function ObservationScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>(); const observation = useObservation(id); const companion = useCompanion();
+  const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
   const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const data = observation.data; const inference = data?.inference;
-  const save = async () => { setBusy(true); setError(''); try { await companion.feedback(id, { action: action.trim(), reaction: reaction.trim(), note: note.trim(), happenedAt: new Date().toISOString() }); setAction(''); setReaction(''); setNote(''); await observation.refetch(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } };
+  const save = async () => { setBusy(true); setError(''); try { await companion.feedback(id, { action: action.trim(), reaction: reaction.trim(), note: note.trim(), happenedAt: new Date().toISOString() }); setAction(''); setReaction(''); setNote(''); const next = observationExitHref(params); if (next) router.replace(next); else await observation.refetch(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } };
   return <Screen title={data?.question || '오늘의 관찰'} subtitle={data ? `${displayDate(data.createdAt)} · ${companion.pets.data?.find(p => p.id === data.petId)?.name ?? '우리 아이'}` : 'OBSERVATION'}>
     {observation.isLoading && <Loading />}<ErrorNote message={observation.error ? errorMessage(observation.error) : null} />
     {data && <>{data.kind === 'AUDIO' ? (data.localAudioUri ? <><AudioPreview uri={data.localAudioUri} />{Platform.OS === 'web' && <Body muted>{data.localMediaVolatile ? '브라우저 체험에서는 녹음을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.' : '브라우저 체험에서는 녹음을 서버로 보내지 않아요.'}</Body>}</> : <Card><Body muted>이 울음 파일은 이 화면에서 다시 들을 수 없어요. 체험 모드에서 기기에 남긴 녹음만 재생할 수 있어요.</Body></Card>) : data.kind === 'VIDEO' && data.localVideoUri ? <><VideoPreview uri={data.localVideoUri} />{Platform.OS === 'web' && data.localMediaVolatile && <Body muted>브라우저 체험에서는 영상을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body>}</> : data.kind === 'VIDEO' ? <Card><Body muted>이 영상 파일은 이 화면에서 재생할 수 없어요. 체험 모드에서 남긴 영상만 기기에서 미리 볼 수 있어요.</Body></Card> : data.localPhotoUri || !companion.demo ? <PrivatePhoto id={id} localUri={data.localPhotoUri} /> : <Card><Body muted>이 사진 파일은 이 화면에서 다시 볼 수 없어요. 체험 모드에서 기기에 남긴 사진만 미리 볼 수 있어요.</Body></Card>}{data.kind === 'AUDIO' && <Body muted>이 녹음은 AI로 분석하지 않았어요. 소리의 뜻을 번역하지 않아요.</Body>}{data.kind === 'VIDEO' && <Body muted>이 영상은 AI로 분석하지 않았어요. 길이와 상황만 기록이에요.</Body>}<View style={{ marginBottom: 14 }}><Badge>{companion.demo ? '체험 기록 · 실제 AI 분석 아님' : data.status === 'ABSTAINED' ? '판단 어려움' : '추정 해석 · 관찰을 바탕으로'}</Badge></View>{companion.demo && <Body>이 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요.</Body>}
