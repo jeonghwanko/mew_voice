@@ -6,7 +6,7 @@ import type { CompanionConversation } from '@findthem/shared';
 import { Body, Button, Card, Chip, Empty, ErrorNote, Field, Heading, Loading, Screen, s } from '../../src/ui/components';
 import { colors as c } from '../../src/ui/theme';
 import { newRequestId, useCompanion } from '../../src/features/companion/useCompanion';
-import { demoConversationsFor, getDemo } from '../../src/features/companion/demo';
+import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { api, errorMessage } from '../../src/lib/api';
 
 type ConversationList = { items: CompanionConversation[]; nextCursor: string | null };
@@ -35,10 +35,7 @@ export default function Conversation() {
   const history = useQuery({
     queryKey: [...companion.key, 'conversations', selectedPet?.id],
     enabled: !!selectedPet,
-    queryFn: async (): Promise<ConversationList> => {
-      if (companion.demo) return { items: demoConversationsFor(await getDemo(), selectedPet!.id), nextCursor: null };
-      return api.get<ConversationList>(`/pet-companion/pets/${selectedPet!.id}/conversations`);
-    },
+    queryFn: (): Promise<ConversationList> => loadSavedConversations(companion.demo, selectedPet!.id),
   });
   const petId = selectedPet?.id;
   const refetchHistory = history.refetch;

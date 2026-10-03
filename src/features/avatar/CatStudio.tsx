@@ -11,7 +11,7 @@ import type { CompanionConversation } from '@findthem/shared';
 import { useSession } from '../../core/session';
 import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
-import { demoConversationsFor, getDemo } from '../companion/demo';
+import { loadSavedConversations } from '../companion/conversationPages';
 import { homeConversationThread, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
 import { AppearancePanel } from './AppearancePanel';
 import { CatStage } from './CatStage';
@@ -52,10 +52,7 @@ export default function CatStudio() {
   const savedThreads = useQuery({
     queryKey: [...companion.key, 'conversations', pet?.id],
     enabled: !!pet,
-    queryFn: async (): Promise<{ items: CompanionConversation[]; nextCursor: string | null }> => {
-      if (companion.demo) return { items: demoConversationsFor(await getDemo(), pet!.id), nextCursor: null };
-      return api.get<{ items: CompanionConversation[]; nextCursor: string | null }>(`/pet-companion/pets/${pet!.id}/conversations`);
-    },
+    queryFn: () => loadSavedConversations(companion.demo, pet!.id),
   });
   const turns = useMemo(() => homeConversationThread(savedThreads.data?.items ?? [], pet?.id, current), [savedThreads.data, pet?.id, current]);
   const thinking = busy || current?.status === 'QUEUED';
