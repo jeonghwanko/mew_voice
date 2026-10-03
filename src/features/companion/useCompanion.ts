@@ -8,7 +8,7 @@ import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { deleteDemoFeedback, updateDemoFeedback, type UpdateDemoFeedbackInput } from './reactionStore';
-import { deleteDemoObservation } from './observationStore';
+import { deleteDemoObservation, updateDemoObservationCaption, type UpdateDemoObservationCaptionInput } from './observationStore';
 import { deleteDemoConversation } from './conversationStore';
 import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
 import { observationListPath, pageObservations } from './observationPages';
@@ -94,6 +94,13 @@ export function useCompanion() {
     await deleteDemoFeedback(observationId, feedbackId, version);
     await invalidate();
   };
+  // Account mode has no route that rewrites a saved question or context tags. Do not pretend a server update happened.
+  const updateObservationCaption = async (id: string, input: UpdateDemoObservationCaptionInput) => {
+    if (!demo) throw new Error('OBSERVATION_CAPTION_ACCOUNT_READONLY');
+    const record = await updateDemoObservationCaption(id, input);
+    await invalidate();
+    return record;
+  };
   // Account mode has no DELETE /observations/:id. Do not pretend a server delete happened.
   const removeObservation = async (id: string) => {
     if (!demo) throw new Error('OBSERVATION_ACCOUNT_READONLY');
@@ -132,7 +139,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, removeObservation, removeConversation, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, removeObservation, removeConversation, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {

@@ -11,6 +11,7 @@ import { latestSavedFeedback, observationCitedReactions } from '../../src/featur
 import { useCitedReactionMoments } from '../../src/features/companion/citedReactions';
 import { citedPriorObservationHref, observationExitHref, observationLeaveHref } from '../../src/features/companion/observationNavigation';
 import { feedbackVersion } from '../../src/features/companion/reactionStore';
+import { OBSERVATION_CONTEXT_TAGS } from '../../src/features/companion/observationStore';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> }>();
@@ -27,7 +28,7 @@ function conflicted(cause: unknown) { return (cause instanceof ApiError && cause
 
 export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
-  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
+  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const data = observation.data; const inference = data?.inference;
   const reactionMoments = useCitedReactionMoments(inference?.citedObservationIds ?? []);
   const citedReactions = observationCitedReactions(inference?.citedObservationIds, reactionMoments);
@@ -72,6 +73,22 @@ export default function ObservationScreen() {
     if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; }
     Alert.alert('반응을 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
   };
+  const knownTags = OBSERVATION_CONTEXT_TAGS as readonly string[];
+  const startCaption = () => {
+    if (!data) return;
+    if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_CAPTION_ACCOUNT_READONLY'))); return; }
+    setCaptionEditing(true); setCaptionQuestion(data.question ?? ''); setCaptionTags([...data.contextTags]); setError('');
+  };
+  const cancelCaption = () => { setCaptionEditing(false); setCaptionQuestion(''); setCaptionTags([]); setError(''); };
+  const saveCaption = async () => {
+    setBusy(true); setError('');
+    try {
+      await companion.updateObservationCaption(id, { question: captionQuestion, contextTags: captionTags });
+      setCaptionEditing(false); setCaptionQuestion(''); setCaptionTags([]);
+      await observation.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
+  const captionChoices = [...knownTags, ...(data?.contextTags ?? []).filter(tag => !knownTags.includes(tag))];
   const removeThis = () => {
     if (!data) return;
     if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_ACCOUNT_READONLY'))); return; }
@@ -83,6 +100,21 @@ export default function ObservationScreen() {
   return <Screen title={data?.question || '오늘의 관찰'} subtitle={data ? `${displayDate(data.createdAt)} · ${companion.pets.data?.find(p => p.id === data.petId)?.name ?? '우리 아이'}` : 'OBSERVATION'}>
     {observation.isLoading && <Loading />}<ErrorNote message={observation.error ? errorMessage(observation.error) : null} />
     {data && <>{data.kind === 'AUDIO' ? (data.localAudioUri ? <><AudioPreview uri={data.localAudioUri} />{Platform.OS === 'web' && <Body muted>{data.localMediaVolatile ? '브라우저 체험에서는 녹음을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.' : '브라우저 체험에서는 녹음을 서버로 보내지 않아요.'}</Body>}</> : <Card><Body muted>이 울음 파일은 이 화면에서 다시 들을 수 없어요. 체험 모드에서 기기에 남긴 녹음만 재생할 수 있어요.</Body></Card>) : data.kind === 'VIDEO' && data.localVideoUri ? <><VideoPreview uri={data.localVideoUri} />{Platform.OS === 'web' && data.localMediaVolatile && <Body muted>브라우저 체험에서는 영상을 서버로 보내지 않아요. 새로고침 뒤에는 재생 파일이 남지 않을 수 있어요.</Body>}</> : data.kind === 'VIDEO' ? <Card><Body muted>이 영상 파일은 이 화면에서 재생할 수 없어요. 체험 모드에서 남긴 영상만 기기에서 미리 볼 수 있어요.</Body></Card> : data.localPhotoUri || !companion.demo ? <PrivatePhoto id={id} localUri={data.localPhotoUri} /> : <Card><Body muted>이 사진 파일은 이 화면에서 다시 볼 수 없어요. 체험 모드에서 기기에 남긴 사진만 미리 볼 수 있어요.</Body></Card>}{data.kind === 'AUDIO' && <Body muted>이 녹음은 AI로 분석하지 않았어요. 소리의 뜻을 번역하지 않아요.</Body>}{data.kind === 'VIDEO' && <Body muted>이 영상은 AI로 분석하지 않았어요. 길이와 상황만 기록이에요.</Body>}<View style={{ marginBottom: 14 }}><Badge>{companion.demo ? '체험 기록 · 실제 AI 분석 아님' : data.status === 'ABSTAINED' ? '판단 어려움' : '추정 해석 · 관찰을 바탕으로'}</Badge></View>{companion.demo && <Body>이 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요.</Body>}
+      <Card>
+        <Heading>남긴 질문과 상황</Heading>
+        {captionEditing ? <>
+          <Body muted>질문과 상황 태그만 고쳐요. 사진·울음·영상, 고양이, 반응 기록은 그대로 두어요. 실제 AI 분석이 아니에요.</Body>
+          <Field label="궁금한 점 · 선택" placeholder="예: 창가를 보며 자꾸 울어요" multiline value={captionQuestion} onChangeText={setCaptionQuestion} maxLength={1500} editable={!busy} />
+          <View style={s.row}>{captionChoices.map(tag => <Chip key={tag} label={tag} selected={captionTags.includes(tag)} onPress={() => { if (!busy) setCaptionTags(old => old.includes(tag) ? old.filter(item => item !== tag) : [...old, tag]); }} />)}</View>
+          {!captionEditing && <ErrorNote message={error} />}
+          <Button title="질문과 상황 저장" busy={busy} disabled={busy} onPress={() => void saveCaption()} />
+          <Button title="질문 수정 취소" secondary disabled={busy} onPress={cancelCaption} />
+        </> : <>
+          <Body>{data.question || '질문을 남기지 않았어요'}</Body>
+          <Body muted>{data.contextTags.length ? data.contextTags.join(' · ') : '상황 태그를 남기지 않았어요'}</Body>
+          {companion.demo ? <Button title="질문과 상황 수정" secondary disabled={busy} onPress={startCaption} /> : <Body muted>이 계정에 남긴 질문과 상황 태그는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}
+        </>}
+      </Card>
       {['QUEUED', 'PROCESSING'].includes(data.status) && <Card><Loading /><Body muted>화면을 나가도 서버의 분석은 이어져요. 기록 탭에서 다시 확인할 수 있어요.</Body></Card>}
       {data.status === 'CANCELLED' && <Card><Heading>관찰 요청이 취소되었어요</Heading><Body muted>보관 동의가 철회되어 분석을 중단했어요. 설정에서 동의를 확인한 뒤 새 기록을 만들 수 있어요.</Body><Button title="설정 열기" secondary onPress={() => router.push('/settings')} /></Card>}
       {data.status === 'FAILED' && <Card><Heading>관찰을 마치지 못했어요</Heading><Body muted>연결이나 분석 서비스 상태를 확인한 후 다시 시도할 수 있어요.</Body><Button title="분석 다시 요청" busy={busy} onPress={() => { setBusy(true); void companion.retry(id).then(() => observation.refetch()).catch(e => setError(errorMessage(e))).finally(() => setBusy(false)); }} /></Card>}
