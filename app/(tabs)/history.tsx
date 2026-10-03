@@ -9,7 +9,7 @@ import type { CompanionCheckin, CompanionObservation } from '@findthem/shared';
 import { MewIcon, type MewIconName } from '../../src/ui/MewIcon';
 import { studio as c } from '../../src/features/avatar/appearance';
 import { useCheckins, checkinLabels, useCitedCheckinMoments } from '../../src/features/companion/useCheckins';
-import { presentCareMention } from '../../src/features/companion/daily';
+import { presentCitedCareAnswer } from '../../src/features/companion/daily';
 import { appendDiaryPage, diaryConversationRows, diaryIntro, mergeDiaryRecords } from '../../src/features/companion/diaryTimeline';
 import { loadSavedConversations } from '../../src/features/companion/conversationPages';
 import { loadCheckinListPage, loadObservationListPage, loadWeeklyRecords } from '../../src/features/companion/weeklyPages';
@@ -47,7 +47,7 @@ export default function History() {
   const careMoments = useCitedCheckinMoments(citedCheckinIds);
   const savedThreads = diaryConversationRows((threads.data?.items ?? []).map(item => ({
     ...item,
-    answer: presentCareMention(item.answer, careMoments.get(item.citedCheckinIds?.[0] ?? '')) ?? item.answer,
+    answer: presentCitedCareAnswer(item.answer, careMoments.get(item.citedCheckinIds?.[0] ?? '')) ?? item.answer,
   })), petId);
   const olderForPet = older && older.petId === petId && older.weekStamp === week.dataUpdatedAt ? older : null;
   const observationCursor = olderForPet ? olderForPet.observationsCursor : (week.data?.observationsNextCursor ?? null);

@@ -1,5 +1,6 @@
 import type { CompanionCheckin, CompanionObservation } from '@findthem/shared';
 import { buildDemoObservation, clearDemoMemory, demoFromStorage, demoInference, groundedDemoReply, initialDemo, changeDemo, getDemo, saveDemoConversation, type FeedbackRecord } from './demo';
+import { citedCareGoneText, presentCitedCareAnswer } from './daily';
 import { readDemo, writeDemo } from '../../core/storage';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const record = (id: string, petId: string, date: string): CompanionObservation => ({ id, petId, createdAt: date, completedAt: date, kind: 'PHOTO', question: '왜 울까요?', contextTags: [], status: 'ABSTAINED', failureCode: null, media: [], inference: null, feedback: [] });
@@ -162,5 +163,24 @@ describe('private demo memory', () => {
     expect(saved.answer).not.toContain('2026년 9월');
     expect(saved.answer).toContain('실제 AI 분석이 아니에요');
     expect(saved.answer).toContain('고양이의 말을 번역한 것도 아니에요');
+  });
+
+  it('refreshes the saved care quote from the current note and does not keep a deleted memo', () => {
+    const now = new Date('2026-09-04T00:00:00Z');
+    const checkin: CompanionCheckin = { id: 'care-window', petId: 'cat-a', kind: 'NOTE', note: '창가에서 햇빛을 쬐었어요', occurredAt: '2026-09-02T08:00:00.000Z', version: 1, createdAt: '2026-09-02T08:00:00.000Z', updatedAt: '2026-09-02T08:00:00.000Z' };
+    const reply = groundedDemoReply('cat-a', [], [], '창가에서 햇빛을 쬐었어요', [checkin], now);
+    const edited = presentCitedCareAnswer(reply.text, { status: 'saved', occurredAt: checkin.occurredAt, kind: 'NOTE', note: '창가를 떠났어요' }, now);
+    expect(edited).toContain('“창가를 떠났어요”라고 적었어요');
+    expect(edited).not.toContain('햇빛을 쬐었어요');
+    expect(edited).toContain('2026년 9월 2일 돌봄에');
+    expect(edited).toContain('실제 AI 분석이 아니에요');
+    expect(edited).toContain('고양이의 말을 번역한 것도 아니에요');
+    const gone = presentCitedCareAnswer(reply.text, { status: 'gone' }, now);
+    expect(gone).toContain(citedCareGoneText);
+    expect(gone).not.toContain('햇빛을 쬐었어요');
+    expect(gone).not.toContain('창가를 떠났어요');
+    expect(gone).toContain('실제 AI 분석이 아니에요');
+    const reaction = groundedDemoReply('cat-a', [record('prior', 'cat-a', '2026-09-01T00:00:00Z')], [feedback('prior')], '장난감', [], now);
+    expect(presentCitedCareAnswer(reaction.text, { status: 'gone' }, now)).toBe(reaction.text);
   });
 });

@@ -56,6 +56,37 @@ export function presentCareMention(text: string | null | undefined, occurredAt: 
   return text.slice(0, at) + live + text.slice(at + stale.length);
 }
 
+/** Same wording the demo answer uses when it first cites a care check-in. */
+export function citedCheckinQuote(kind: string, note: string | null | undefined) {
+  const label = kind in checkinLabels ? checkinLabels[kind as CompanionCheckinKind] : '돌봄 기록';
+  const trimmed = note?.trim() ?? '';
+  if (trimmed && trimmed !== label) return `“${label}”라고 골랐고, “${trimmed}”라고 적었어요`;
+  return `“${label}”라고 남겼어요`;
+}
+
+export type CitedCareRecord =
+  | { status: 'saved'; occurredAt: string; kind: string; note: string | null }
+  | { status: 'gone' };
+
+/** Plain line when the check-in this answer cited is no longer saved. Not a new record. */
+export const citedCareGoneText = '인용했던 돌봄 기록은 지금 없어요';
+
+const CITED_CARE_QUOTE = /(?:오늘 돌봄|\d{4}년 \d{1,2}월 \d{1,2}일 돌봄|돌봄 기록)에 “(?:놀아줬어요|식사를 챙겼어요|메모 남기기|특이사항 없어요|돌봄 기록)”라고 (?:골랐고, “[\s\S]*?”라고 적었어요|남겼어요)/;
+
+/**
+ * First cited care sentence only, from the check-in as it is saved now.
+ * A deleted check-in drops that quote. Later sentences and other turns stay.
+ */
+export function presentCitedCareAnswer(text: string | null | undefined, care: CitedCareRecord | undefined, now = new Date()) {
+  if (!text || !care) return text ?? null;
+  const match = CITED_CARE_QUOTE.exec(text);
+  if (!match) return care.status === 'saved' ? presentCareMention(text, care.occurredAt, now) : text;
+  const replacement = care.status === 'gone'
+    ? citedCareGoneText
+    : `${citedCareName(care.occurredAt, now)}에 ${citedCheckinQuote(care.kind, care.note)}`;
+  return text.slice(0, match.index) + replacement + text.slice(match.index + match[0].length);
+}
+
 export function homeCitedCheckinLink(occurredAt: string | null | undefined, index: number, now = new Date()) {
   return `참고한 ${citedCareName(occurredAt, now)} ${index + 1} 보기 →`;
 }

@@ -13,7 +13,7 @@ import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
 import { loadSavedConversations } from '../companion/conversationPages';
 import { homeConversationThread, latestHomeAnswer, type HomeConversationTurn } from '../companion/homeConversation';
-import { homeCitedCheckinLink, presentCareMention } from '../companion/daily';
+import { homeCitedCheckinLink, presentCitedCareAnswer } from '../companion/daily';
 import { useCitedCheckinMoments } from '../companion/useCheckins';
 import { AppearancePanel } from './AppearancePanel';
 import { CatStage } from './CatStage';
@@ -61,7 +61,7 @@ export default function CatStudio() {
   const careMoments = useCitedCheckinMoments(citedCheckinIds);
   const visibleTurns = useMemo(() => turns.map(turn => ({
     ...turn,
-    answer: presentCareMention(turn.answer, careMoments.get(turn.citedCheckinIds?.[0] ?? '')),
+    answer: presentCitedCareAnswer(turn.answer, careMoments.get(turn.citedCheckinIds?.[0] ?? '')),
   })), [turns, careMoments]);
   const thinking = busy || current?.status === 'QUEUED';
   const answer = thinking ? null : latestHomeAnswer(visibleTurns);
@@ -159,7 +159,7 @@ export default function CatStudio() {
           <View style={styles.pickerHeader}><Text style={styles.headerTitle}>글로 대화하기</Text><Pressable accessibilityRole="button" accessibilityLabel="대화 접기" onPress={() => { setChatOpen(false); stopSpeech(); }} style={styles.iconButton}><MewIcon name="close" /></Pressable></View>
           <View style={styles.bubbleHeader}><Text style={styles.bubbleLabel}>{companion.demo ? '기기 내 체험 · 실제 AI 답변 아님' : answer ? '기록을 바탕으로 한 AI 답변' : '오늘의 대화'}</Text>{thinking && <ActivityIndicator size="small" color={c.accent} />}{answer && <Pressable accessibilityRole="button" accessibilityLabel={speaking ? '최근 답변 읽기 정지' : '최근 답변 소리로 듣기'} onPress={() => void readAnswer()} style={styles.audioButton}><Ionicons name={speaking ? 'stop-circle-outline' : 'volume-medium-outline'} size={20} color={c.accent} /></Pressable>}</View>
           <ScrollView ref={threadRef} style={{ maxHeight: keyboard ? 140 : Math.min(420, Math.max(180, Math.round(height * 0.46))) }} contentContainerStyle={{ paddingBottom: 8, gap: 16 }} accessibilityLiveRegion="polite" onContentSizeChange={() => threadRef.current?.scrollToEnd({ animated: false })}>
-            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} careAt={id => careMoments.get(id)} onObservation={id => navigateFromChat(`/observations/${id}`)} onCheckin={id => navigateFromChat(`/checkin?id=${id}`)} />
+            <ChatThread turns={visibleTurns} thinking={thinking} loading={!!pet && savedThreads.isLoading && turns.length === 0} failed={savedThreads.isError && turns.length === 0} petName={pet?.name} careAt={id => { const care = careMoments.get(id); return care?.status === 'saved' ? care.occurredAt : undefined; }} onObservation={id => navigateFromChat(`/observations/${id}`)} onCheckin={id => navigateFromChat(`/checkin?id=${id}`)} />
           </ScrollView>
           {(error || appearance.error || pending.error || savedThreads.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{error || appearance.error || errorMessage(pending.error ?? savedThreads.error ?? companion.pets.error)}</Text> : null}
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}

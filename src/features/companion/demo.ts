@@ -1,6 +1,6 @@
 import type { CompanionCheckin, CompanionConversation, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedback, CompanionInference } from '@findthem/shared';
 import { readDemo, writeDemo } from '../../core/storage';
-import { checkinLabels, citedCareName } from './daily';
+import { checkinLabels, citedCareName, citedCheckinQuote } from './daily';
 
 export type FeedbackRecord = CompanionFeedback;
 export type ChatReply = { id: string; text: string; citedObservationIds: string[]; citedCheckinIds: string[] };
@@ -113,10 +113,7 @@ export function selectDemoCitation(petId: string, observations: CompanionObserva
   return { citation: sources.reduce((latest, source) => compareCitation(source.item, latest.item) > 0 ? source : latest).item, matched: false };
 }
 function checkinQuote(item: CompanionCheckin) {
-  const label = checkinLabel(item);
-  const note = item.note?.trim();
-  if (note && note !== label) return `“${label}”라고 골랐고, “${note}”라고 적었어요`;
-  return `“${label}”라고 남겼어요`;
+  return citedCheckinQuote(item.kind, item.note);
 }
 function demoReplyText(citation: DemoCitation | undefined, matched: boolean, now = new Date()) {
   if (!citation) return '아직 이 아이의 반응 기록이나 오늘 돌봄 기록이 없어요. 사진이나 울음 기록 뒤 해 본 행동과 이후 반응, 또는 오늘 돌봄을 남기면 여기서 다시 찾아볼 수 있어요.\n\n체험 모드에서는 AI가 답변하지 않아요.';

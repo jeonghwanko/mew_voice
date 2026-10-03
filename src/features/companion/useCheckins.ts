@@ -3,9 +3,10 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import type { CompanionCheckin, CompanionListResponse, CreateCompanionCheckinInput, UpdateCompanionCheckinInput } from '@findthem/shared';
 import { useCompanion } from './useCompanion';
 import { getDemo } from './demo';
-import { api, request } from '../../lib/api';
+import { ApiError, api, request } from '../../lib/api';
 import { deleteDemoCheckin, saveDemoCheckin, updateDemoCheckin } from './checkinStore';
 import { checkinListPath } from './observationPages';
+import { type CitedCareRecord } from './daily';
 export { checkinLabels } from './daily';
 
 const base = '/pet-companion/checkins';
@@ -51,39 +52,49 @@ export function useCheckin(id?: string) {
   });
 }
 
-/** Occurred time for cited care, from the loaded list or the existing check-in read. Unknown ids stay absent. */
+function citedCareFromCheckin(item: { kind: string; note?: string | null; occurredAt?: string | null; createdAt?: string | null }): CitedCareRecord {
+  return { status: 'saved', occurredAt: item.occurredAt || item.createdAt || '', kind: item.kind, note: item.note?.trim() || null };
+}
+
+function citedCareMissing(error: unknown) {
+  return (error instanceof ApiError && error.status === 404) || (error instanceof Error && error.message === 'NOT_FOUND');
+}
+
+/** Current cited care, from the loaded list or one check-in read. A confirmed miss is gone; a failed read stays absent. */
 export function useCitedCheckinMoments(ids: readonly string[]) {
   const checkins = useCheckins();
   const joined = ids.join('\0');
   const unique = useMemo(() => [...new Set(joined.split('\0').filter(Boolean))], [joined]);
   const known = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const item of checkins.items) {
-      const at = item.occurredAt || item.createdAt;
-      if (at) map.set(item.id, at);
-    }
+    const map = new Map<string, CitedCareRecord>();
+    for (const item of checkins.items) map.set(item.id, citedCareFromCheckin(item));
     return map;
   }, [checkins.items]);
-  const missingKey = unique.filter(id => !known.has(id)).join('\0');
+  const listComplete = checkins.list.isSuccess && !checkins.list.hasNextPage;
+  const missingKey = (listComplete ? [] : unique.filter(id => !known.has(id))).join('\0');
   const extra = useQuery({
     queryKey: [...checkins.key, 'cited-checkin-moments', missingKey],
     enabled: missingKey.length > 0,
     retry: false,
     queryFn: async () => {
-      const pairs = await Promise.all(missingKey.split('\0').map(async id => {
+      return Promise.all(missingKey.split('\0').map(async id => {
         try {
-          const record = await loadCheckinById(checkins.demo, id);
-          return [id, record.occurredAt || record.createdAt || ''] as const;
-        } catch {
-          return [id, ''] as const;
+          return { id, record: citedCareFromCheckin(await loadCheckinById(checkins.demo, id)) };
+        } catch (error) {
+          return { id, record: citedCareMissing(error) ? { status: 'gone' as const } : null };
         }
       }));
-      return pairs;
     },
   });
   return useMemo(() => {
     const map = new Map(known);
-    for (const [id, at] of extra.data ?? []) if (at) map.set(id, at);
+    if (listComplete) {
+      for (const id of unique) if (!map.has(id)) map.set(id, { status: 'gone' });
+    }
+    for (const item of extra.data ?? []) {
+      if (!item.record || map.has(item.id)) continue;
+      map.set(item.id, item.record);
+    }
     return map;
-  }, [known, extra.data]);
+  }, [known, extra.data, listComplete, unique]);
 }

@@ -1,6 +1,6 @@
 import { changeDemo, getDemo, initialDemo } from './demo';
 import { saveDemoCheckin, updateDemoCheckin, deleteDemoCheckin } from './checkinStore';
-import { citedCareName, conversationCitedCheckinLink, dayKey, formatDiaryDay, homeCitedCheckinLink, isToday, presentCareMention, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins } from './daily';
+import { citedCareGoneText, citedCareName, conversationCitedCheckinLink, dayKey, formatDiaryDay, homeCitedCheckinLink, isToday, presentCareMention, presentCitedCareAnswer, recentRecordedDays, resolveSelectedPet, todayCheckinSummary, todayCheckins } from './daily';
 import { formatDayKey } from './weeklySummary';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const draft = () => ({ petId: 'demo-momo', kind: 'PLAY' as const, note: '낚싯대 놀이', occurredAt: '2026-09-01T12:00:00.000Z', idempotencyKey: 'checkin-one' });
@@ -92,4 +92,21 @@ it('names a cited check-in by the KST day and does not call an earlier day today
   const savedAsDated = savedAsToday.replace('오늘 돌봄에', '2026년 9월 10일 돌봄에');
   expect(presentCareMention(savedAsDated, todayAt, now)).toBe(savedAsToday);
   expect(presentCareMention(savedAsToday, undefined, now)).toBe(savedAsToday);
+});
+
+it('shows the current care note in a saved answer and drops a deleted quote', () => {
+  const now = new Date('2026-09-10T00:30:00Z');
+  const earlierAt = '2026-09-09T14:59:59Z';
+  const saved = '질문과 맞는 저장 기록을 찾았어요. 오늘 돌봄에 “메모 남기기”라고 골랐고, “창가에서 햇빛을 쬐었어요”라고 적었어요. 한 번의 기록으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.';
+  const edited = presentCitedCareAnswer(saved, { status: 'saved', occurredAt: earlierAt, kind: 'PLAY', note: '창가를 떠났어요' }, now);
+  expect(edited).toBe('질문과 맞는 저장 기록을 찾았어요. 2026년 9월 9일 돌봄에 “놀아줬어요”라고 골랐고, “창가를 떠났어요”라고 적었어요. 한 번의 기록으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.');
+  const cleared = presentCitedCareAnswer(saved, { status: 'saved', occurredAt: earlierAt, kind: 'MEAL', note: '   ' }, now);
+  expect(cleared).toContain('2026년 9월 9일 돌봄에 “식사를 챙겼어요”라고 남겼어요.');
+  expect(cleared).not.toContain('햇빛을 쬐었어요');
+  const gone = presentCitedCareAnswer(saved, { status: 'gone' }, now);
+  expect(gone).toBe(`질문과 맞는 저장 기록을 찾았어요. ${citedCareGoneText}. 한 번의 기록으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`);
+  expect(gone).not.toContain('햇빛을 쬐었어요');
+  const reaction = '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  expect(presentCitedCareAnswer(reaction, { status: 'gone' }, now)).toBe(reaction);
+  expect(presentCitedCareAnswer(saved, undefined, now)).toBe(saved);
 });
