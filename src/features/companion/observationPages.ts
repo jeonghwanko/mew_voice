@@ -16,3 +16,15 @@ export function pageObservations<T extends { id: string; createdAt: string }>(it
   const more = start + limit < sorted.length;
   return { items: page, nextCursor: more && page.length ? page[page.length - 1].id : null };
 }
+
+/** Existing GET /observations. nextCursor is sent back as cursor, unchanged. */
+export function observationListPath(petId: string, cursor: string | null): string {
+  const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+  return `/pet-companion/observations?petId=${petId}&limit=${OBSERVATION_PAGE_SIZE}${cursorQuery}`;
+}
+
+/** Existing GET /checkins. Same page size. nextCursor is sent back as cursor, unchanged. */
+export function checkinListPath(petId: string, cursor: string | null): string {
+  const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+  return `/pet-companion/checkins?petId=${petId}&limit=${OBSERVATION_PAGE_SIZE}${cursorQuery}`;
+}

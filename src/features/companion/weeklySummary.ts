@@ -91,6 +91,9 @@ export function summarizeWeek(input: {
   observationKinds?: readonly WeeklyMediaKind[];
   /** True when more already-paged rows may exist beyond what was passed in. */
   truncated?: boolean;
+  /** Per-source stops. A null nextCursor is not truncation and must not mark the other source. */
+  truncatedObservations?: boolean;
+  truncatedCheckins?: boolean;
 }): WeeklySummary {
   const demo = input.demo ?? true;
   const available = new Set(input.observationKinds ?? weeklyObservationKinds(demo));
@@ -144,13 +147,21 @@ export function summarizeWeek(input: {
     else if (observationCount === 0) insufficientReason = `돌봄 기록은 ${checkinCount}건 있지만, 사진·울음·영상 관찰이 없어 자주 남긴 상황을 말하지 않아요.`;
     else insufficientReason = `이 기간의 관찰 기록이 ${observationCount}건뿐이라 자주 나타난 상황이라고 말하기 어려워요. 기록이 적다는 것은 행동이 나아졌다는 뜻이 아니에요.`;
   }
-  const truncated = input.truncated ?? false;
+  const named = input.truncatedObservations !== undefined || input.truncatedCheckins !== undefined;
+  const observationsTruncated = input.truncatedObservations === true;
+  const checkinsTruncated = input.truncatedCheckins === true;
+  const truncated = named ? observationsTruncated || checkinsTruncated : (input.truncated ?? false);
   const baseNotice = demo
     ? '이 요약은 이 기기에 남긴 기록 건수만 세어요. 실제 AI 분석이 아니에요. 기록을 많이 남겼다고 행동이 나빠진 것은 아니에요.'
     : '이미 불러온 관찰·돌봄 기록 건수만 세어요. 주간 요약 API는 없고, 실제 AI 분석이 아니에요. 기록을 많이 남겼다고 행동이 나빠진 것은 아니에요.';
-  const notice = truncated
-    ? `${baseNotice} 아직 불러오지 않은 이전 페이지는 세지 않아요.`
-    : baseNotice;
+  const truncationNote = !truncated
+    ? ''
+    : named && observationsTruncated && !checkinsTruncated
+      ? ' 아직 불러오지 않은 관찰 이전 페이지는 세지 않아요.'
+      : named && checkinsTruncated && !observationsTruncated
+        ? ' 아직 불러오지 않은 돌봄 이전 페이지는 세지 않아요.'
+        : ' 아직 불러오지 않은 이전 페이지는 세지 않아요.';
+  const notice = `${baseNotice}${truncationNote}`;
   return {
     petId: input.petId,
     startKey: window.startKey,

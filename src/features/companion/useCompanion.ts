@@ -8,7 +8,7 @@ import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { durableDemoMediaUri, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
-import { OBSERVATION_PAGE_SIZE, pageObservations } from './observationPages';
+import { observationListPath, pageObservations } from './observationPages';
 
 export type Observation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string; localMediaVolatile?: boolean };
 export type PhotoDraft = { uri: string; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
@@ -29,7 +29,7 @@ export function useCompanion() {
     queryKey: [...key, 'observations', activePet?.id], enabled: !!session && !!activePet, initialPageParam: null as string | null,
     queryFn: async ({ pageParam }): Promise<CompanionListResponse<Observation>> => {
       if (!activePet) return { items: [], nextCursor: null };
-      if (!demo) return api.get<CompanionListResponse<Observation>>(`${base}/observations?petId=${activePet.id}&limit=${OBSERVATION_PAGE_SIZE}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''}`);
+      if (!demo) return api.get<CompanionListResponse<Observation>>(observationListPath(activePet.id, pageParam));
       const data = await getDemo();
       const owned = data.observations.filter(o => o.petId === activePet.id).map(o => ({ ...o, feedback: data.feedback.filter(f => f.observationId === o.id) }));
       const page = pageObservations(owned, pageParam);

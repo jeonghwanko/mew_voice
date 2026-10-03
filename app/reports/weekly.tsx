@@ -4,8 +4,10 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { studio as c } from '../../src/features/avatar/appearance';
 import { useCheckins } from '../../src/features/companion/useCheckins';
+import { loadWeeklyRecords } from '../../src/features/companion/weeklyPages';
 import { formatDayKey, summarizeWeek, weeklyObservationKinds, type WeeklySummary } from '../../src/features/companion/weeklySummary';
 import { errorMessage } from '../../src/lib/api';
 
@@ -21,22 +23,26 @@ export default function WeeklyReport() {
   const focused = useIsFocused();
   const checkins = useCheckins();
   const pet = checkins.activePet;
-  const observations = useMemo(() => checkins.observations.data?.pages.flatMap(page => page.items) ?? [], [checkins.observations.data]);
-  const truncated = !!checkins.observations.hasNextPage || !!checkins.list.hasNextPage;
-  const loading = !!pet && (checkins.observations.isLoading || checkins.list.isLoading) && observations.length === 0 && checkins.items.length === 0;
-  const error = checkins.observations.error ?? checkins.list.error ?? checkins.pets.error;
+  const week = useQuery({
+    queryKey: [...checkins.key, 'weekly-window', pet?.id, checkins.demo],
+    enabled: !!pet,
+    queryFn: () => loadWeeklyRecords(checkins.demo, pet!.id),
+  });
+  const loading = !!pet && week.isLoading;
+  const error = week.error ?? checkins.pets.error;
   const summary = useMemo(() => {
-    if (!pet || loading) return null;
+    if (!pet || loading || !week.data) return null;
     return summarizeWeek({
       petId: pet.id,
-      observations,
-      feedback: observations.flatMap(item => item.feedback ?? []),
-      checkins: checkins.items,
+      observations: week.data.observations,
+      feedback: week.data.observations.flatMap(item => item.feedback ?? []),
+      checkins: week.data.checkins,
       demo: checkins.demo,
       observationKinds: weeklyObservationKinds(checkins.demo),
-      truncated,
+      truncatedObservations: week.data.observationsTruncated,
+      truncatedCheckins: week.data.checkinsTruncated,
     });
-  }, [pet, loading, observations, checkins.items, checkins.demo, truncated]);
+  }, [pet, loading, week.data, checkins.demo]);
   const unavailable = summary?.kindCounts.find(item => item.count === null);
   return <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
     {focused && <StatusBar style="dark" />}

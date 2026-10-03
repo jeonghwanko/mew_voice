@@ -4,6 +4,7 @@ import { useCompanion } from './useCompanion';
 import { getDemo } from './demo';
 import { api, request } from '../../lib/api';
 import { deleteDemoCheckin, saveDemoCheckin, updateDemoCheckin } from './checkinStore';
+import { checkinListPath } from './observationPages';
 export { checkinLabels } from './daily';
 
 const base = '/pet-companion/checkins';
@@ -16,7 +17,8 @@ export function useCheckins() {
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }): Promise<CompanionListResponse<CompanionCheckin>> => {
       if (companion.demo) return { items: (await getDemo()).checkins.filter(item => item.petId === petId).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)), nextCursor: null };
-      return api.get(`${base}?petId=${petId}&limit=50${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''}`);
+      if (!petId) return { items: [], nextCursor: null };
+      return api.get(checkinListPath(petId, pageParam));
     },
     getNextPageParam: page => page.nextCursor ?? undefined,
   });
