@@ -82,7 +82,7 @@ export function useCompanion() {
     else await api.post(`${base}/observations/${id}/feedback`, input);
     await invalidate();
   };
-  // Account mode can add a reaction. There is no edit or delete route, so those stay on this device.
+  // Account mode can add a reaction. There is no edit or delete route for the latest or an earlier pair, so those stay on this device.
   const updateFeedback = async (observationId: string, feedbackId: string, input: UpdateDemoFeedbackInput) => {
     if (!demo) throw new Error('REACTION_ACCOUNT_READONLY');
     const record = await updateDemoFeedback(observationId, feedbackId, input);

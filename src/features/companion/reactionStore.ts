@@ -1,4 +1,3 @@
-import { latestSavedFeedback } from './daily';
 import { changeDemo, type FeedbackRecord } from './demo';
 
 export type UpdateDemoFeedbackInput = { version: number; action: string; reaction: string; note?: string | null };
@@ -17,13 +16,9 @@ function normalize(input: { action: string; reaction: string; note?: string | nu
   return { action, reaction, note };
 }
 
-function latestFor(feedback: readonly FeedbackRecord[], observationId: string) {
-  return latestSavedFeedback(feedback.filter(item => item.observationId === observationId));
-}
-
 /**
- * Replace the latest saved reaction in place.
- * An older pair, a stale version, or a missing observation is not rewritten.
+ * Replace one saved reaction on this observation in place.
+ * A later pair stays. A stale version or a missing observation is not rewritten.
  * Stored conversation text is left untouched.
  */
 export async function updateDemoFeedback(observationId: string, feedbackId: string, input: UpdateDemoFeedbackInput) {
@@ -32,8 +27,6 @@ export async function updateDemoFeedback(observationId: string, feedbackId: stri
     if (!data.observations.some(item => item.id === observationId)) throw new Error('NOT_FOUND');
     const index = data.feedback.findIndex(item => item.id === feedbackId && item.observationId === observationId);
     if (index < 0) throw new Error('NOT_FOUND');
-    const latest = latestFor(data.feedback, observationId);
-    if (!latest || latest.id !== feedbackId) throw new Error('EDIT_CONFLICT');
     const current = data.feedback[index];
     if (feedbackVersion(current) !== input.version) throw new Error('EDIT_CONFLICT');
     const normalized = normalize(input);
@@ -44,18 +37,16 @@ export async function updateDemoFeedback(observationId: string, feedbackId: stri
 }
 
 /**
- * Remove that latest reaction. Nothing is inserted in its place.
- * A missing row is already gone. An older pair or a stale version is left as saved.
- * Stored conversation text is left untouched.
+ * Remove that reaction. Nothing is inserted in its place.
+ * Later reactions, the media, and the cat stay. A missing row is already gone.
+ * A stale version is left as saved. Stored conversation text is left untouched.
  */
 export async function deleteDemoFeedback(observationId: string, feedbackId: string, version: number) {
   return changeDemo(data => {
     const index = data.feedback.findIndex(item => item.id === feedbackId && item.observationId === observationId);
     if (index < 0) return;
     const current = data.feedback[index];
-    const latest = latestFor(data.feedback, observationId);
-    if (!latest || latest.id !== feedbackId || feedbackVersion(current) !== version) throw new Error('EDIT_CONFLICT');
+    if (feedbackVersion(current) !== version) throw new Error('EDIT_CONFLICT');
     data.feedback.splice(index, 1);
   });
 }
-

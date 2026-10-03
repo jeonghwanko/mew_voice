@@ -49,25 +49,26 @@ export default function ObservationScreen() {
       else setError(errorMessage(cause));
     } finally { setBusy(false); }
   };
-  const startEdit = () => {
-    if (!latest?.id) return;
+  const startEdit = (item: { id: string; action?: string | null; reaction?: string | null; note?: string | null }) => {
     if (!companion.demo) { setError(errorMessage(new Error('REACTION_ACCOUNT_READONLY'))); return; }
-    setEditing({ id: latest.id, version: feedbackVersion(latest) });
-    setAction(latest.action ?? ''); setReaction(latest.reaction ?? ''); setNote(latest.note ?? '');
+    setEditing({ id: item.id, version: feedbackVersion(item) });
+    setAction(item.action ?? ''); setReaction(item.reaction ?? ''); setNote(item.note ?? '');
     setError(''); setConflict(false);
   };
   const cancelEdit = () => { setEditing(null); setAction(''); setReaction(''); setNote(''); setError(''); setConflict(false); };
   const reload = () => {
     setConflict(false);
     void observation.refetch().then(result => {
-      const next = latestSavedFeedback(result.data?.feedback);
-      setEditing(current => current && next?.id === current.id ? { id: next.id, version: feedbackVersion(next) } : current);
+      setEditing(current => {
+        if (!current) return current;
+        const next = result.data?.feedback?.find(row => row.id === current.id);
+        return next ? { id: next.id, version: feedbackVersion(next) } : current;
+      });
     });
   };
-  const removeLatest = () => {
-    if (!latest?.id) return;
+  const removeReaction = (item: { id: string }) => {
     if (!companion.demo) { setError(errorMessage(new Error('REACTION_ACCOUNT_READONLY'))); return; }
-    const feedbackId = latest.id; const version = feedbackVersion(latest);
+    const feedbackId = item.id; const version = feedbackVersion(item);
     const execute = () => { setBusy(true); setError(''); setConflict(false); void companion.removeFeedback(id, feedbackId, version).then(finish).catch(cause => { if (conflicted(cause)) { setConflict(true); setError('다른 곳에서 이 반응이 수정되었어요. 최신 내용을 다시 불러온 뒤 삭제할 수 있어요.'); } else setError(errorMessage(cause)); }).finally(() => setBusy(false)); };
     const copy = '이 반응 기록을 삭제할까요? 삭제한 기록은 되돌릴 수 없어요.';
     if (Platform.OS === 'web') { if (globalThis.confirm?.(copy)) execute(); return; }
@@ -126,8 +127,8 @@ export default function ObservationScreen() {
         {inference.suggestedAction && <Card accent><Heading>이렇게 반응해 볼까요?</Heading><Body>{inference.suggestedAction}</Body></Card>}
         {!!citedReactions.length && <><Heading>함께 참고한 이전 기록</Heading>{citedReactions.map(item => <View key={item.id}>{item.line ? <Body>{item.line}</Body> : null}{item.open ? <Button title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(item.id, params))} /> : null}</View>)}</>}
       </>}
-      <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>{editing ? '저장한 최근 반응을 고치고 있어요. 새 반응을 추가하지 않아요.' : '실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.'}</Body>
-      {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && item.id === latest?.id && <><Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={startEdit} /><Button title="이 반응 삭제" danger disabled={busy} onPress={removeLatest} /></>}</Card>)}
+      <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>{editing ? (editing.id === latest?.id ? '저장한 최근 반응을 고치고 있어요. 새 반응을 추가하지 않아요.' : '저장한 이전 반응을 고치고 있어요. 새 반응을 추가하지 않아요.') : '실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.'}</Body>
+      {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && <><Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={() => startEdit(item)} /><Button title="이 반응 삭제" danger disabled={busy} onPress={() => removeReaction(item)} /></>}</Card>)}
       <View style={[s.row, { marginTop: 16 }]}>{actions.map(v => <Chip key={v} label={v} selected={action === v} onPress={() => { if (!busy) setAction(v); }} />)}<Chip label="기타" selected={!actions.includes(action) && !!action} onPress={() => { if (!busy) setAction(''); }} /></View>
       <Field label="해 본 행동" value={action} editable={!busy} onChangeText={setAction} maxLength={500} placeholder="직접 쓴 행동 · 선택" />
       <Heading>그 뒤 반응은 어땠나요?</Heading><View style={s.row}>{reactions.map(v => <Chip key={v} label={v} selected={reaction === v} onPress={() => { if (!busy) setReaction(v); }} />)}<Chip label="기타" selected={!reactions.includes(reaction) && !!reaction} onPress={() => { if (!busy) setReaction(''); }} /></View>
