@@ -10,6 +10,7 @@ import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversati
 import { deleteDemoFeedback, updateDemoFeedback, type UpdateDemoFeedbackInput } from './reactionStore';
 import { deleteDemoObservation, updateDemoObservationCaption, type UpdateDemoObservationCaptionInput } from './observationStore';
 import { deleteDemoConversation } from './conversationStore';
+import { updateDemoPetProfile, type UpdateDemoPetProfileInput } from './petStore';
 import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations } from './webMediaStore';
 import { observationListPath, pageObservations } from './observationPages';
 
@@ -45,6 +46,13 @@ export function useCompanion() {
   const createPet = async (input: CreateCompanionPetInput) => {
     const result = demo ? await changeDemo(data => { const date = new Date().toISOString(); const pet: CompanionPet = { id: createId(), name: input.name, species: 'CAT', confirmedTraits: input.confirmedTraits ?? {}, profilePhotoUrl: null, createdAt: date, updatedAt: date }; data.pets.push(pet); return pet; }) : await api.post<CompanionPet>(`${base}/pets`, input);
     await invalidate(); return result;
+  };
+  // Account mode has no PATCH /pets/:id. Do not pretend a server update happened.
+  const updatePetProfile = async (id: string, input: UpdateDemoPetProfileInput) => {
+    if (!demo) throw new Error('PET_PROFILE_ACCOUNT_READONLY');
+    const pet = await updateDemoPetProfile(id, input);
+    await invalidate();
+    return pet;
   };
   const saveConsent = async (serviceStorage: boolean, researchTraining: boolean) => {
     if (demo) await changeDemo(data => { data.consent = { serviceStorage, researchTraining, updatedAt: new Date().toISOString() }; });
@@ -139,7 +147,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, removeObservation, removeConversation, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateObservationCaption, removeObservation, removeConversation, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {

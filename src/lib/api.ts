@@ -36,6 +36,8 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && ['INVALID_CHECKIN', 'INVALID_CHECKIN_TIME'].includes(error.message)) return '메모 내용과 발생 시각을 확인해 주세요.';
   if (error instanceof Error && error.message === 'INVALID_FEEDBACK') return '해 본 행동과 이후 반응을 확인해 주세요.';
   if (error instanceof Error && error.message === 'INVALID_OBSERVATION_CAPTION') return '질문과 상황 태그를 확인해 주세요.';
+  if (error instanceof Error && error.message === 'INVALID_PET_PROFILE') return '이름과 알고 있는 나이·품종·성별을 확인해 주세요.';
+  if (error instanceof Error && error.message === 'PET_PROFILE_ACCOUNT_READONLY') return '이 계정에 등록한 아이 정보는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'REACTION_ACCOUNT_READONLY') return '계정에 남긴 반응은 아직 고치거나 지울 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'OBSERVATION_ACCOUNT_READONLY') return '이 계정에 남긴 관찰은 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.';
   if (error instanceof Error && error.message === 'OBSERVATION_CAPTION_ACCOUNT_READONLY') return '이 계정에 남긴 질문과 상황 태그는 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
