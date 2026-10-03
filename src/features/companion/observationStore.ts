@@ -184,3 +184,34 @@ export async function moveDemoObservation(id: string, petId: string): Promise<De
     return updated;
   });
 }
+
+function replaceCitation(ids: readonly string[], index: number, targetId: string) {
+  if (!Number.isInteger(index) || index < 0 || index >= ids.length) throw new Error('INVALID_OBSERVATION_CITATION');
+  const nextId = typeof targetId === 'string' ? targetId.trim() : '';
+  if (!nextId || nextId === ids[index]) throw new Error('INVALID_OBSERVATION_CITATION');
+  return ids.map((id, at) => at === index ? nextId : id);
+}
+
+/**
+ * Point one cited prior reaction at another observation that is already saved.
+ * Only that index on this observation's inference changes.
+ * The observation id, media, question, context tags, reactions, and the rest of the inference stay.
+ * Other citations on this observation stay. Conversations are not retargeted.
+ * This does not create an observation, reaction, or cat, and it does not analyze media or rewrite an answer.
+ */
+export async function retargetDemoObservationCitation(id: string, index: number, observationId: string): Promise<DemoObservation> {
+  return changeDemo(data => {
+    if (!data.consent.serviceStorage) throw new Error('CONSENT_REQUIRED');
+    const indexInList = data.observations.findIndex(item => item.id === id);
+    if (indexInList < 0) throw new Error('NOT_FOUND');
+    const current = data.observations[indexInList];
+    const inference = current.inference;
+    if (!inference || !Array.isArray(inference.citedObservationIds)) throw new Error('INVALID_OBSERVATION_CITATION');
+    const nextIds = replaceCitation(inference.citedObservationIds, index, observationId);
+    const targetId = nextIds[index];
+    if (!data.observations.some(item => item.id === targetId)) throw new Error('NOT_FOUND');
+    const updated: DemoObservation = { ...current, inference: { ...inference, citedObservationIds: nextIds } };
+    data.observations[indexInList] = updated;
+    return updated;
+  });
+}

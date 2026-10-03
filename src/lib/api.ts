@@ -53,6 +53,8 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'OBSERVATION_TIME_ACCOUNT_READONLY') return '이 계정에 남긴 관찰 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_OBSERVATION_PET') return '옮길 아이를 확인해 주세요.';
   if (error instanceof Error && error.message === 'OBSERVATION_PET_ACCOUNT_READONLY') return '이 계정에 남긴 관찰은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
+  if (error instanceof Error && error.message === 'INVALID_OBSERVATION_CITATION') return '바꿀 이전 반응 인용을 확인해 주세요.';
+  if (error instanceof Error && error.message === 'OBSERVATION_CITATION_ACCOUNT_READONLY') return '이 계정에 남긴 관찰의 이전 반응 인용은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'INVALID_CHECKIN_PET') return '옮길 아이를 확인해 주세요.';
   if (error instanceof Error && error.message === 'CHECKIN_PET_ACCOUNT_READONLY') return '이 계정에 남긴 돌봄 기록은 여기서 다른 아이에게 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.';
   if (error instanceof Error && error.message === 'CONVERSATION_ACCOUNT_READONLY') return '이 계정에 남긴 대화는 여기서 지울 수 없어요. 이 기기의 체험 기록만 삭제할 수 있어요.';

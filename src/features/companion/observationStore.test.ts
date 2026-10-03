@@ -1,7 +1,7 @@
 import type { CompanionCheckin, CompanionConversation, CompanionInference, CompanionObservation } from '@findthem/shared';
 import { changeDemo, getDemo, initialDemo, saveDemoConversation, type FeedbackRecord } from './demo';
-import { citedReactionGoneText, dayKey, observationCitedReactions, presentCitedReactionAnswer, resolveCitedReactionMap } from './daily';
-import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime } from './observationStore';
+import { citedReactionFromFeedback, citedReactionGoneText, dayKey, observationCitedReactions, presentCitedReactionAnswer, resolveCitedReactionMap } from './daily';
+import { deleteDemoObservation, moveDemoObservation, retargetDemoObservationCitation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime } from './observationStore';
 import { summarizeWeek } from './weeklySummary';
 import { errorMessage } from '../../lib/api';
 
@@ -343,4 +343,108 @@ it('rejects an empty or future observation time and does not invent an account u
   expect(errorMessage(new Error('INVALID_OBSERVATION_TIME'))).toBe('기록 시각을 확인해 주세요.');
   expect(errorMessage(new Error('OBSERVATION_TIME_FUTURE'))).toBe('미래 시각은 기록할 수 없어요. 이전 시각을 그대로 두었어요.');
   expect(errorMessage(new Error('OBSERVATION_TIME_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 관찰 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
+});
+
+it('points one cited prior reaction at another saved observation and leaves the other citations', async () => {
+  const saved = '질문과 맞는 저장 기록을 찾았어요. “놀아줬어요” 이후 “따라왔어요”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.';
+  const thread: CompanionConversation = { id: 'thread-1', petId: 'demo-momo', question: '창가에서 왜 울까요?', answer: saved, status: 'COMPLETED', citedObservationIds: ['obs-1'], citedCheckinIds: ['care-1'], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' };
+  const photo = { ...observation('obs-current', 'demo-momo', 'PHOTO'), localPhotoUri: 'file:///companion-photos/obs-current.jpg', question: '창가에서 왜 울까요?', contextTags: ['창가에서', '베란다'], inference: inference(['obs-1', 'obs-3']) };
+  photo.inference = { ...photo.inference!, id: 'inf-current', observationId: 'obs-current', observation: ['보호자가 사진과 상황을 입력했어요.'], limitations: ['체험용 화면이며 실제 AI 분석 결과가 아닙니다.'], suggestedAction: '지켜봐 주세요.' };
+  const keptInference = photo.inference;
+  await changeDemo(data => {
+    data.pets.push({ ...data.pets[0], id: 'demo-nabi', name: '나비' });
+    data.observations = [
+      photo,
+      observation('obs-1'),
+      { ...observation('obs-2', 'demo-nabi'), question: '식후에는 왜 그르릉거릴까요?' },
+      observation('obs-3'),
+    ];
+    data.feedback = [
+      reaction('on-current', 'obs-current', '2026-09-04T00:00:00Z'),
+      reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z'),
+      { ...reaction('on-2', 'obs-2', '2026-09-03T00:00:00Z'), action: '밥을 줬어요', reaction: '먹었어요' },
+      { ...reaction('on-3', 'obs-3', '2026-09-02T00:00:00Z'), action: '지켜봤어요', reaction: '그대로였어요' },
+    ];
+    data.checkins = [checkin()];
+    data.conversations = [thread];
+  });
+  const before = await getDemo();
+  const result = await retargetDemoObservationCitation('obs-current', 0, '  obs-2  ');
+  const state = await getDemo();
+  const stored = state.observations.find(item => item.id === 'obs-current');
+  expect(result.id).toBe('obs-current');
+  expect(result.inference?.citedObservationIds).toEqual(['obs-2', 'obs-3']);
+  expect(stored?.inference?.citedObservationIds).toEqual(['obs-2', 'obs-3']);
+  expect(stored?.inference).toEqual({ ...keptInference, citedObservationIds: ['obs-2', 'obs-3'] });
+  expect(stored).toMatchObject({ id: 'obs-current', petId: 'demo-momo', kind: 'PHOTO', question: '창가에서 왜 울까요?', contextTags: ['창가에서', '베란다'], localPhotoUri: 'file:///companion-photos/obs-current.jpg', status: 'ABSTAINED' });
+  expect(state.observations).toHaveLength(before.observations.length);
+  expect(state.observations.map(item => item.id)).toEqual(['obs-current', 'obs-1', 'obs-2', 'obs-3']);
+  expect(state.feedback.map(item => item.id)).toEqual(['on-current', 'on-1', 'on-2', 'on-3']);
+  expect(state.feedback.find(item => item.id === 'on-current')?.observationId).toBe('obs-current');
+  expect(state.conversations).toEqual([thread]);
+  expect(state.checkins).toEqual([checkin()]);
+  expect(state.pets.map(item => item.id)).toEqual(['demo-momo', 'demo-nabi']);
+  const moments = new Map([
+    ['obs-2', citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-2'))!],
+    ['obs-3', citedReactionFromFeedback(state.feedback.filter(item => item.observationId === 'obs-3'))!],
+  ]);
+  const shown = observationCitedReactions(stored?.inference?.citedObservationIds, moments);
+  expect(shown).toEqual([
+    { id: 'obs-2', line: '“밥을 줬어요” 이후 “먹었어요”라고 남겼어요', open: true },
+    { id: 'obs-3', line: '“지켜봤어요” 이후 “그대로였어요”라고 남겼어요', open: true },
+  ]);
+  expect(shown.map(item => item.line).join(' ')).not.toContain('따라왔어요');
+  await deleteDemoObservation('obs-2');
+  const after = (await getDemo()).observations.find(item => item.id === 'obs-current');
+  expect(after?.id).toBe('obs-current');
+  expect(after?.inference?.citedObservationIds).toEqual(['obs-2', 'obs-3']);
+  expect(after?.inference?.observation).toEqual(['보호자가 사진과 상황을 입력했어요.']);
+  expect(after?.question).toBe('창가에서 왜 울까요?');
+  const remaining = (await getDemo()).feedback.filter(item => item.observationId === 'obs-3');
+  const goneMoments = resolveCitedReactionMap({
+    ids: after?.inference?.citedObservationIds ?? [],
+    known: new Map([['obs-3', citedReactionFromFeedback(remaining)!]]),
+    loadedIds: new Set(['obs-3']),
+    listComplete: true,
+    extra: [],
+  });
+  const missing = observationCitedReactions(after?.inference?.citedObservationIds, goneMoments);
+  expect(missing[0]).toEqual({ id: 'obs-2', line: citedReactionGoneText, open: false });
+  expect(missing[1]?.line).toBe('“지켜봤어요” 이후 “그대로였어요”라고 남겼어요');
+  expect((await getDemo()).conversations).toEqual([thread]);
+  expect((await getDemo()).observations.map(item => item.id)).toEqual(['obs-current', 'obs-1', 'obs-3']);
+});
+
+it('refuses a prior-reaction citation that is not another saved observation and does not invent an account update', async () => {
+  const photo = { ...observation('obs-current'), localPhotoUri: 'file:///companion-photos/obs-current.jpg', inference: inference(['obs-1', 'obs-1']) };
+  photo.inference = { ...photo.inference!, observationId: 'obs-current' };
+  const thread: CompanionConversation = { id: 'thread-1', petId: 'demo-momo', question: '창가에서 왜 울까요?', answer: '저장된 답', status: 'COMPLETED', citedObservationIds: ['obs-1'], citedCheckinIds: [], createdAt: '2026-09-02T00:00:00Z', completedAt: '2026-09-02T00:00:00Z' };
+  await changeDemo(data => {
+    data.observations = [photo, observation('obs-1'), observation('obs-2')];
+    data.feedback = [reaction('on-current', 'obs-current', '2026-09-04T00:00:00Z'), reaction('on-1', 'obs-1', '2026-09-01T00:00:00Z')];
+    data.conversations = [thread];
+  });
+  await expect(retargetDemoObservationCitation('obs-current', 0, 'obs-1')).rejects.toThrow('INVALID_OBSERVATION_CITATION');
+  await expect(retargetDemoObservationCitation('obs-current', 0, '   ')).rejects.toThrow('INVALID_OBSERVATION_CITATION');
+  await expect(retargetDemoObservationCitation('obs-current', -1, 'obs-2')).rejects.toThrow('INVALID_OBSERVATION_CITATION');
+  await expect(retargetDemoObservationCitation('obs-current', 1.5, 'obs-2')).rejects.toThrow('INVALID_OBSERVATION_CITATION');
+  await expect(retargetDemoObservationCitation('obs-current', 2, 'obs-2')).rejects.toThrow('INVALID_OBSERVATION_CITATION');
+  await expect(retargetDemoObservationCitation('missing', 0, 'obs-2')).rejects.toThrow('NOT_FOUND');
+  await expect(retargetDemoObservationCitation('obs-current', 0, 'missing-obs')).rejects.toThrow('NOT_FOUND');
+  await expect(retargetDemoObservationCitation('obs-1', 0, 'obs-2')).rejects.toThrow('INVALID_OBSERVATION_CITATION');
+  const kept = await getDemo();
+  expect(kept.observations).toHaveLength(3);
+  expect(kept.observations.find(item => item.id === 'obs-current')?.inference?.citedObservationIds).toEqual(['obs-1', 'obs-1']);
+  expect(kept.feedback.map(item => item.id)).toEqual(['on-current', 'on-1']);
+  expect(kept.conversations).toEqual([thread]);
+  const moved = await retargetDemoObservationCitation('obs-current', 1, 'obs-2');
+  expect(moved.inference?.citedObservationIds).toEqual(['obs-1', 'obs-2']);
+  expect(moved.inference?.observation).toEqual(photo.inference?.observation);
+  expect(moved.localPhotoUri).toBe('file:///companion-photos/obs-current.jpg');
+  expect((await getDemo()).conversations[0].citedObservationIds).toEqual(['obs-1']);
+  await changeDemo(data => { data.consent.serviceStorage = false; });
+  await expect(retargetDemoObservationCitation('obs-current', 0, 'obs-2')).rejects.toThrow('CONSENT_REQUIRED');
+  expect((await getDemo()).observations.find(item => item.id === 'obs-current')?.inference?.citedObservationIds).toEqual(['obs-1', 'obs-2']);
+  expect(errorMessage(new Error('INVALID_OBSERVATION_CITATION'))).toBe('바꿀 이전 반응 인용을 확인해 주세요.');
+  expect(errorMessage(new Error('OBSERVATION_CITATION_ACCOUNT_READONLY'))).toBe('이 계정에 남긴 관찰의 이전 반응 인용은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.');
 });

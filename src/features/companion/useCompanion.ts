@@ -8,7 +8,7 @@ import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
 import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { deleteDemoFeedback, moveDemoFeedback, updateDemoFeedback, updateDemoFeedbackTime, type UpdateDemoFeedbackInput } from './reactionStore';
-import { deleteDemoObservation, moveDemoObservation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime, type UpdateDemoObservationCaptionInput, type UpdateDemoObservationMediaInput } from './observationStore';
+import { deleteDemoObservation, moveDemoObservation, retargetDemoObservationCitation, updateDemoObservationCaption, updateDemoObservationMedia, updateDemoObservationTime, type UpdateDemoObservationCaptionInput, type UpdateDemoObservationMediaInput } from './observationStore';
 import { deleteDemoConversation, moveDemoConversation, retargetDemoConversationCheckin, retargetDemoConversationObservation, updateDemoConversationQuestion, updateDemoConversationTime } from './conversationStore';
 import { updateDemoPetProfile, type UpdateDemoPetProfileInput } from './petStore';
 import { durableDemoMediaUri, forgetObservationDemoMedia, forgetPetDemoMedia, playableDemoObservations, reassignObservationDemoMedia, revokeDemoMediaUrls } from './webMediaStore';
@@ -151,6 +151,13 @@ export function useCompanion() {
     await invalidate();
     return record;
   };
+  // Account mode has no route that rewrites an observation's cited prior reaction. The client only reads inference. Do not pretend a server update happened.
+  const retargetObservationCitation = async (id: string, index: number, observationId: string) => {
+    if (!demo) throw new Error('OBSERVATION_CITATION_ACCOUNT_READONLY');
+    const observation = await retargetDemoObservationCitation(id, index, observationId);
+    await invalidate();
+    return observation;
+  };
   // Account mode has no route that moves an observation to another pet. Do not pretend a server update happened.
   const moveObservation = async (id: string, petId: string) => {
     if (!demo) throw new Error('OBSERVATION_PET_ACCOUNT_READONLY');
@@ -231,7 +238,7 @@ export function useCompanion() {
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };
-  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateFeedbackTime, moveFeedback, updateObservationCaption, updateObservationTime, replaceObservationMedia, moveObservation, removeObservation, removeConversation, updateConversationQuestion, updateConversationTime, moveConversation, retargetConversationObservation, retargetConversationCheckin, removePet, retry, ask, invalidate };
+  return { key, demo, pets, activePet, selectPet: selection.selectPet, selectionReady: selection.ready, consent, observations, deletions, createPet, updatePetProfile, saveConsent, submitPhoto, submitMedia, feedback, updateFeedback, removeFeedback, updateFeedbackTime, moveFeedback, updateObservationCaption, updateObservationTime, replaceObservationMedia, moveObservation, retargetObservationCitation, removeObservation, removeConversation, updateConversationQuestion, updateConversationTime, moveConversation, retargetConversationObservation, retargetConversationCheckin, removePet, retry, ask, invalidate };
 }
 
 export async function loadObservationById(demo: boolean, id: string): Promise<Observation> {

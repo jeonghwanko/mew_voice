@@ -14,6 +14,7 @@ import { citedPriorObservationHref, observationExitHref, observationLeaveHref } 
 import { feedbackVersion } from '../../src/features/companion/reactionStore';
 import { getDemo } from '../../src/features/companion/demo';
 import { OBSERVATION_CONTEXT_TAGS } from '../../src/features/companion/observationStore';
+import { choicesForPet, firstChoiceOnPet, hasOtherChoice, initialCitationChoice, observationChoiceLabel, petsWithOtherChoice, recentChoices } from '../../src/features/companion/citationChoices';
 
 function PrivatePhoto({ id, localUri }: { id: string; localUri?: string }) {
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> }>();
@@ -44,7 +45,7 @@ function recordedTimeText(value: string) { const date = new Date(value); return 
 
 export default function ObservationScreen() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string | string[]; conversationId?: string | string[]; petId?: string | string[] }>(); const id = params.id; const observation = useObservation(id); const companion = useCompanion();
-  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [timeEditing, setTimeEditing] = useState(false); const [timeText, setTimeText] = useState(''); const [reactionTime, setReactionTime] = useState<{ id: string; version: number } | null>(null); const [reactionTimeText, setReactionTimeText] = useState(''); const [movingReaction, setMovingReaction] = useState<{ id: string; version: number } | null>(null); const [reactionMovePetId, setReactionMovePetId] = useState(''); const [reactionMoveObservationId, setReactionMoveObservationId] = useState(''); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
+  const [action, setAction] = useState(''); const [reaction, setReaction] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<{ id: string; version: number } | null>(null); const [captionEditing, setCaptionEditing] = useState(false); const [captionQuestion, setCaptionQuestion] = useState(''); const [captionTags, setCaptionTags] = useState<string[]>([]); const [timeEditing, setTimeEditing] = useState(false); const [timeText, setTimeText] = useState(''); const [reactionTime, setReactionTime] = useState<{ id: string; version: number } | null>(null); const [reactionTimeText, setReactionTimeText] = useState(''); const [movingReaction, setMovingReaction] = useState<{ id: string; version: number } | null>(null); const [reactionMovePetId, setReactionMovePetId] = useState(''); const [reactionMoveObservationId, setReactionMoveObservationId] = useState(''); const [movingPet, setMovingPet] = useState(false); const [movePetId, setMovePetId] = useState(''); const [citationEdit, setCitationEdit] = useState<{ index: number; petId: string; targetId: string } | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const catalog = useQuery({
     queryKey: [...companion.key, 'observation-catalog'],
     enabled: companion.demo,
@@ -202,6 +203,35 @@ export default function ObservationScreen() {
       else setError(errorMessage(cause));
     } finally { setBusy(false); }
   };
+  const startCitation = (index: number) => {
+    if (!inference?.citedObservationIds) return;
+    if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_CITATION_ACCOUNT_READONLY'))); return; }
+    const records = catalog.data;
+    const currentId = inference.citedObservationIds[index];
+    if (!records || currentId == null || !companion.pets.data) return;
+    const picked = initialCitationChoice(records, currentId, companion.pets.data, item => item.createdAt);
+    if (!picked) return;
+    setCitationEdit({ index, ...picked }); setError('');
+  };
+  const chooseCitationPet = (petId: string) => {
+    if (busy || !citationEdit || !inference || !catalog.data) return;
+    const currentId = inference.citedObservationIds[citationEdit.index];
+    if (currentId == null) return;
+    const targetId = firstChoiceOnPet(catalog.data, currentId, petId, item => item.createdAt);
+    setCitationEdit({ ...citationEdit, petId, targetId });
+  };
+  const saveCitation = async () => {
+    if (!inference || !citationEdit || !catalog.data) return;
+    const currentId = inference.citedObservationIds[citationEdit.index];
+    const choices = currentId == null ? [] : choicesForPet(catalog.data, citationEdit.petId, currentId);
+    if (!choices.some(item => item.id === citationEdit.targetId)) { setError(errorMessage(new Error('INVALID_OBSERVATION_CITATION'))); return; }
+    setBusy(true); setError('');
+    try {
+      await companion.retargetObservationCitation(id, citationEdit.index, citationEdit.targetId);
+      setCitationEdit(null);
+      await observation.refetch();
+    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
+  };
   const removeThis = () => {
     if (!data) return;
     if (!companion.demo) { setError(errorMessage(new Error('OBSERVATION_ACCOUNT_READONLY'))); return; }
@@ -298,7 +328,8 @@ export default function ObservationScreen() {
         <Card><Heading>가능한 의미</Heading>{inference.possibilities.map((p, i) => <View key={i} style={{ gap: 5, marginBottom: 10 }}><Body>{i + 1}. {p.label}</Body><Body muted>{p.reason}</Body></View>)}</Card>
         <Card><Badge>{data.status === 'ABSTAINED' ? '판단 어려움' : inference.confidence === 'high' ? '단서 충분함' : '단서 제한적'}</Badge>{inference.reason && <Body>{inference.reason}</Body>}{inference.limitations.map((v, i) => <Body muted key={i}>{v}</Body>)}</Card>
         {inference.suggestedAction && <Card accent><Heading>이렇게 반응해 볼까요?</Heading><Body>{inference.suggestedAction}</Body></Card>}
-        {!!citedReactions.length && <><Heading>함께 참고한 이전 기록</Heading>{citedReactions.map(item => <View key={item.id}>{item.line ? <Body>{item.line}</Body> : null}{item.open ? <Button title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(item.id, params))} /> : null}</View>)}</>}
+        {!!citedReactions.length && <><Heading>함께 참고한 이전 기록</Heading>{citedReactions.map((item, index) => <View key={`${index}-${item.id}`}>{item.line ? <Body>{item.line}</Body> : null}{item.open ? <Button title="보호자가 남긴 반응 보기" secondary onPress={() => router.push(citedPriorObservationHref(item.id, params))} /> : null}</View>)}</>}
+        <PriorReactionCitationCard demo={companion.demo} busy={busy} citations={inference.citedObservationIds} records={catalog.data} pets={companion.pets.data} editing={citationEdit} onStart={startCitation} onPet={chooseCitationPet} onTarget={targetId => { if (!busy && citationEdit) setCitationEdit({ ...citationEdit, targetId }); }} onSave={() => void saveCitation()} onCancel={() => { setCitationEdit(null); setError(''); }} />
       </>}
       <Heading>그 뒤, 우리 아이는 어땠나요?</Heading><Body muted>{editing ? (editing.id === latest?.id ? '저장한 최근 반응을 고치고 있어요. 새 반응을 추가하지 않아요.' : '저장한 이전 반응을 고치고 있어요. 새 반응을 추가하지 않아요.') : '실제로 해 본 행동과 그 뒤에 관찰한 반응을 남겨 주세요. 다음 대화에서 함께 참고할 수 있어요.'}</Body>
       {data.feedback?.map(item => <Card key={item.id}><Badge>{item.id === latest?.id ? '최근 보호자 기록' : '보호자 기록'}</Badge><Body>{item.action} → {item.reaction}</Body>{item.note ? <Body muted>{item.note}</Body> : null}{item.id && <>{reactionTime?.id === item.id ? <><Body muted>이 반응의 시각만 고쳐요. 같은 반응 문장과 관찰의 사진·울음·영상, 질문, 상황 태그는 그대로 두어요. 새 반응을 만들지 않아요.</Body><Field label="반응 시각 · 한국 시간(KST)" placeholder="2026-09-10 19:20" value={reactionTimeText} onChangeText={setReactionTimeText} editable={!busy} /><ErrorNote message={error} /><Button title="시각 저장" busy={busy} disabled={busy || !reactionTimeText.trim()} onPress={() => void saveReactionTime()} /><Button title="시각 수정 취소" secondary disabled={busy} onPress={cancelReactionTime} /></> : <><Body>{recordedTimeText(item.happenedAt || item.createdAt)}</Body>{companion.demo ? <Button title="이 반응 시각 수정" secondary disabled={busy || reactionTime !== null} onPress={() => startReactionTime(item)} /> : <Body muted>이 계정에 남긴 반응 시각은 여기서 고칠 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}<Button title={editing?.id === item.id ? '이 반응을 고치는 중' : '이 반응 수정'} secondary disabled={busy || editing?.id === item.id} onPress={() => startEdit(item)} /><Button title="이 반응 삭제" danger disabled={busy} onPress={() => removeReaction(item)} /><Heading>어느 관찰의 반응인가요</Heading><Body muted>이미 있는 다른 관찰로만 옮겨요. 같은 반응 문장과 시각, 반응 번호는 그대로 두어요. 새 관찰이나 새 아이를 만들지 않고, AI로 분석하지 않아요.</Body>{companion.demo ? !catalog.data || !companion.pets.data ? null : reactionTargets.length === 0 ? <Body muted>옮길 다른 관찰이 없어서 옮길 수 없어요.</Body> : movingReaction?.id === item.id ? <><View style={s.row}>{reactionMovePets.map(pet => <Chip key={pet.id} label={pet.name} selected={reactionMovePetId === pet.id} onPress={() => chooseReactionMovePet(pet.id)} />)}</View><View style={s.row}>{reactionMoveRecords.map(record => <Chip key={record.id} label={moveObservationLabel(record, reactionMoveRecords)} selected={reactionMoveObservationId === record.id} onPress={() => { if (!busy) setReactionMoveObservationId(record.id); }} />)}</View><ErrorNote message={error} /><Button title="이 관찰로 옮기기" busy={busy} disabled={busy || !reactionMoveRecords.some(record => record.id === reactionMoveObservationId)} onPress={() => void saveReactionMove()} /><Button title="옮기기 취소" secondary disabled={busy} onPress={cancelReactionMove} /></> : <Button title="다른 관찰로 옮기기" secondary disabled={busy || movingReaction !== null || reactionTime !== null} onPress={() => startReactionMove(item)} /> : <Body muted>이 계정에 남긴 반응은 여기서 다른 관찰로 옮길 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body>}</>}</Card>)}
@@ -316,4 +347,26 @@ export default function ObservationScreen() {
     </>}
     <Pressable onPress={() => router.replace(observationLeaveHref(params))} style={{ padding: 20, alignItems: 'center' }}><Body muted>기록 목록으로</Body></Pressable>
   </Screen>;
+}
+
+function PriorReactionCitationCard({ demo, busy, citations, records, pets, editing, onStart, onPet, onTarget, onSave, onCancel }: { demo: boolean; busy: boolean; citations: readonly string[]; records: readonly MoveObservation[] | undefined; pets: readonly { id: string; name: string }[] | undefined; editing: { index: number; petId: string; targetId: string } | null; onStart: (index: number) => void; onPet: (petId: string) => void; onTarget: (id: string) => void; onSave: () => void; onCancel: () => void }) {
+  if (!citations.length) return null;
+  const note = '이미 있는 다른 관찰로만 바꿉니다. 같은 관찰의 사진·울음·영상, 질문, 상황 태그, 이 관찰에 남긴 반응은 그대로 두어요. 이 인용만 그 기록으로 바꿉니다. 다른 인용은 그대로 두어요. 다시 분석하거나 답을 다시 만들지 않아요.';
+  if (!demo) return <Card><Heading>어느 이전 반응을 가리키나요</Heading><Body muted>{note}</Body><Body muted>이 계정에 남긴 관찰의 이전 반응 인용은 여기서 바꿀 수 없어요. 이 기기의 체험 기록만 수정할 수 있어요.</Body></Card>;
+  const offered = citations.map((id, index) => ({ id, index })).filter(item => hasOtherChoice(records, item.id));
+  if (!records || !pets || !offered.length) return null;
+  const active = editing && offered.some(item => item.index === editing.index) ? editing : null;
+  const currentId = active ? citations[active.index] : '';
+  const petChoices = active && currentId != null ? petsWithOtherChoice(records, currentId, pets) : [];
+  const recordChoices = active && currentId != null ? recentChoices(choicesForPet(records, active.petId, currentId), item => item.createdAt) : [];
+  return <Card>
+    <Heading>어느 이전 반응을 가리키나요</Heading>
+    <Body muted>{note}</Body>
+    {active ? <>
+      <View style={s.row}>{petChoices.map(pet => <Chip key={pet.id} label={pet.name} selected={active.petId === pet.id} onPress={() => { if (!busy) onPet(pet.id); }} />)}</View>
+      <View style={s.row}>{recordChoices.map(record => <Chip key={record.id} label={observationChoiceLabel(record, recordChoices)} selected={active.targetId === record.id} onPress={() => { if (!busy) onTarget(record.id); }} />)}</View>
+      <Button title="이 관찰로 바꾸기" busy={busy} disabled={busy || !recordChoices.some(record => record.id === active.targetId)} onPress={onSave} />
+      <Button title="바꾸기 취소" secondary disabled={busy} onPress={onCancel} />
+    </> : offered.map(item => <Button key={item.index} title={`이전 반응 인용 ${item.index + 1}을 다른 기록으로 바꾸기`} secondary disabled={busy} onPress={() => onStart(item.index)} />)}
+  </Card>;
 }
