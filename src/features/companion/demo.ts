@@ -1,15 +1,15 @@
-import type { CompanionCheckin, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedback, CompanionInference } from '@findthem/shared';
+import type { CompanionCheckin, CompanionConversation, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedback, CompanionInference } from '@findthem/shared';
 import { readDemo, writeDemo } from '../../core/storage';
 
 export type FeedbackRecord = CompanionFeedback;
 export type ChatReply = { id: string; text: string; citedObservationIds: string[] };
 export type DemoObservation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string };
-export type DemoState = { version: 1; checkins: CompanionCheckin[]; checkinRequests: Record<string, string>; pets: CompanionPet[]; observations: DemoObservation[]; feedback: FeedbackRecord[]; consent: CompanionConsent };
+export type DemoState = { version: 1; checkins: CompanionCheckin[]; checkinRequests: Record<string, string>; pets: CompanionPet[]; observations: DemoObservation[]; feedback: FeedbackRecord[]; conversations: CompanionConversation[]; consent: CompanionConsent };
 export type DemoMediaDraft = { uri: string; kind: 'PHOTO' | 'AUDIO' | 'VIDEO'; durationMs?: number; mimeType?: string; byteSize?: number; petId: string; question: string; contextTags: string[]; idempotencyKey: string };
 export const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 export function initialDemo(): DemoState {
   const date = new Date().toISOString();
-  return { version: 1, checkins: [], checkinRequests: {}, pets: [{ id: 'demo-momo', name: '모모', species: 'CAT', profilePhotoUrl: null, confirmedTraits: { age: '3살', breed: '모름' }, createdAt: date, updatedAt: date }], observations: [], feedback: [], consent: { serviceStorage: true, researchTraining: false, updatedAt: date } };
+  return { version: 1, checkins: [], checkinRequests: {}, pets: [{ id: 'demo-momo', name: '모모', species: 'CAT', profilePhotoUrl: null, confirmedTraits: { age: '3살', breed: '모름' }, createdAt: date, updatedAt: date }], observations: [], feedback: [], conversations: [], consent: { serviceStorage: true, researchTraining: false, updatedAt: date } };
 }
 export function demoInference(observation: CompanionObservation, previous: CompanionObservation[], feedback: FeedbackRecord[]): CompanionInference {
   const knownIds = new Set(previous.filter(item => item.petId === observation.petId && item.id !== observation.id && item.createdAt <= observation.createdAt).map(item => item.id));
@@ -40,17 +40,86 @@ export function buildDemoObservation(draft: DemoMediaDraft, previous: CompanionO
   observation.inference = demoInference(observation, previous, feedback);
   return observation;
 }
-export function groundedDemoReply(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[]): ChatReply {
-  const allowed = new Set(observations.filter(item => item.petId === petId).map(item => item.id));
-  const memory = feedback.filter(item => allowed.has(item.observationId)).slice(-1)[0];
-  return { id: createId(), text: memory ? `저장한 보호자 기록을 찾았어요. “${memory.action}” 이후 “${memory.reaction}”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n체험 모드에서는 질문에 대한 AI 답변 대신 기록 조회만 보여드려요.` : '아직 이 아이의 반응 기록이 없어요. 사진 기록 뒤 해 본 행동과 이후 반응을 남기면 여기서 다시 찾아볼 수 있어요.\n\n체험 모드에서는 AI가 답변하지 않아요.', citedObservationIds: memory ? [memory.observationId] : [] };
+const DEMO_QUESTION_STOPWORDS = new Set(['오늘', '어제', '내일', '이유', '궁금', '우리', '아이', '기록', '반응', '왜', '어떻게', '무엇', '뭐야', '뭐예요', '했어', '했어요', '인가요', '있어요', '없어요', '같아', '같아요', '어땠나요', '어땠어', '어때', '때', '좀', '더', '그리고', '그래서', '고양이', '냥이', '질문', '답변', '최근', '저장', '보호자', '이후', '이전', '보여줘', '알려줘', '어디', '이거', '그거', '저거', '어떤', '무슨']);
+function foldDemoText(value: string) { return value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); }
+function demoPhrases(parts: (string | null | undefined)[]) {
+  const found = new Set<string>();
+  for (const part of parts) {
+    if (!part?.trim()) continue;
+    const whole = foldDemoText(part);
+    if (whole.length >= 2 && !DEMO_QUESTION_STOPWORDS.has(whole)) found.add(whole);
+    for (const token of part.normalize('NFKC').toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+      if (token.length >= 2 && !DEMO_QUESTION_STOPWORDS.has(token)) found.add(token);
+    }
+  }
+  return [...found];
+}
+function memoryTime(item: FeedbackRecord) { return item.happenedAt || item.createdAt; }
+function compareMemory(a: FeedbackRecord, b: FeedbackRecord) { return memoryTime(a).localeCompare(memoryTime(b)) || a.id.localeCompare(b.id); }
+function memoryScore(question: string, observation: CompanionObservation, item: FeedbackRecord) {
+  const foldedQuestion = foldDemoText(question);
+  if (foldedQuestion.length < 2) return 0;
+  const fields = [observation.question, ...observation.contextTags, item.action, item.reaction, item.note];
+  let score = 0;
+  for (const phrase of demoPhrases(fields)) if (foldedQuestion.includes(phrase)) score += phrase.length * 2;
+  const foldedFields = fields.map(field => foldDemoText(field ?? ''));
+  for (const token of demoPhrases([question])) if (foldedFields.some(field => field.includes(token))) score += token.length;
+  return score;
+}
+/** Pick the saved reaction the question actually names. A tie keeps the earlier record, not the newest one. */
+export function selectDemoMemory(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question: string) {
+  const owned = new Map(observations.filter(item => item.petId === petId).map(item => [item.id, item]));
+  const memories = feedback.filter(item => owned.has(item.observationId));
+  if (!memories.length) return null;
+  let best: { item: FeedbackRecord; score: number } | undefined;
+  for (const item of memories) {
+    const score = memoryScore(question, owned.get(item.observationId)!, item);
+    if (score <= 0) continue;
+    if (!best || score > best.score || (score === best.score && compareMemory(item, best.item) < 0)) best = { item, score };
+  }
+  if (best) return { feedback: best.item, matched: true };
+  return { feedback: memories.reduce((latest, item) => compareMemory(item, latest) > 0 ? item : latest), matched: false };
+}
+function demoReplyText(memory: FeedbackRecord | undefined, matched: boolean) {
+  if (!memory) return '아직 이 아이의 반응 기록이 없어요. 사진이나 울음 기록 뒤 해 본 행동과 이후 반응을 남기면 여기서 다시 찾아볼 수 있어요.\n\n체험 모드에서는 AI가 답변하지 않아요.';
+  const lead = matched ? '질문과 맞는 저장 기록을 찾았어요.' : '질문과 같은 문구의 이전 기록은 찾지 못해서, 가장 최근에 저장한 반응만 보여 드려요.';
+  return `${lead} “${memory.action}” 이후 “${memory.reaction}”라고 남겼어요. 한 번의 반응으로 이유를 확정할 수는 없어요.\n\n이 답은 저장된 보호자 기록을 보여 주는 것이며, 실제 AI 분석이 아니에요. 고양이의 말을 번역한 것도 아니에요.`;
+}
+export function groundedDemoReply(petId: string, observations: CompanionObservation[], feedback: FeedbackRecord[], question = ''): ChatReply {
+  const chosen = selectDemoMemory(petId, observations, feedback, question);
+  const memory = chosen?.feedback;
+  return { id: createId(), text: demoReplyText(memory, chosen?.matched ?? false), citedObservationIds: memory ? [memory.observationId] : [] };
+}
+export function demoConversationsFor(data: DemoState, petId: string) {
+  return data.conversations.filter(item => item.petId === petId).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+}
+export function saveDemoConversation(petId: string, question: string, id: string, now = new Date()) {
+  const text = question.trim();
+  if (!petId || !text || !id.trim()) throw new Error('INVALID_CONVERSATION');
+  return changeDemo(data => {
+    const existing = data.conversations.find(item => item.id === id);
+    if (existing) { if (existing.petId !== petId || existing.question !== text) throw new Error('IDEMPOTENCY_CONFLICT'); return existing; }
+    const reply = groundedDemoReply(petId, data.observations, data.feedback, text);
+    const createdAt = now.toISOString();
+    const conversation: CompanionConversation = { id, petId, question: text, answer: reply.text, status: 'COMPLETED', citedObservationIds: reply.citedObservationIds, createdAt, completedAt: createdAt };
+    data.conversations.push(conversation);
+    return conversation;
+  });
 }
 let state: DemoState | null = null;
 let sequence: Promise<unknown> = Promise.resolve();
+export function demoFromStorage(raw: string): DemoState {
+  const parsed = JSON.parse(raw) as DemoState;
+  if (parsed.version !== 1 || !Array.isArray(parsed.pets) || !Array.isArray(parsed.observations) || !Array.isArray(parsed.feedback)) throw new Error('INVALID_LOCAL_DATA');
+  if (parsed.conversations != null && !Array.isArray(parsed.conversations)) throw new Error('INVALID_LOCAL_DATA');
+  return { ...parsed, checkins: parsed.checkins ?? [], checkinRequests: parsed.checkinRequests ?? {}, conversations: parsed.conversations ?? [] };
+}
+/** Drops the process cache so the next read comes from the on-device demo file. */
+export function clearDemoMemory() { state = null; }
 async function loadState() {
   if (state) return state;
   const raw = await readDemo();
-  if (raw) { const parsed = JSON.parse(raw) as DemoState; if (parsed.version !== 1 || !Array.isArray(parsed.pets) || !Array.isArray(parsed.observations) || !Array.isArray(parsed.feedback)) throw new Error('INVALID_LOCAL_DATA'); state = { ...parsed, checkins: parsed.checkins ?? [], checkinRequests: parsed.checkinRequests ?? {} }; }
+  if (raw) state = demoFromStorage(raw);
   else { state = initialDemo(); await writeDemo(JSON.stringify(state)); }
   return state;
 }

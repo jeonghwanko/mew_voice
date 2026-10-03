@@ -1,38 +1,58 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import type { CompanionConversation } from '@findthem/shared';
 import { Body, Button, Card, Chip, Empty, ErrorNote, Field, Heading, Loading, Screen, s } from '../../src/ui/components';
 import { colors as c } from '../../src/ui/theme';
 import { newRequestId, useCompanion } from '../../src/features/companion/useCompanion';
+import { demoConversationsFor, getDemo } from '../../src/features/companion/demo';
 import { api, errorMessage } from '../../src/lib/api';
-
 
 type ConversationList = { items: CompanionConversation[]; nextCursor: string | null };
 
 export default function Conversation() {
-  const { petId: requestedPetId } = useLocalSearchParams<{ petId?: string }>();
-
+  const { petId: requestedPetId, conversationId } = useLocalSearchParams<{ petId?: string; conversationId?: string }>();
+  const requestedConversationId = Array.isArray(conversationId) ? conversationId[0] : conversationId;
   const companion = useCompanion();
   const [message, setMessage] = useState('');
   const [active, setActive] = useState<CompanionConversation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [requestId, setRequestId] = useState(newRequestId);
+  const appliedConversation = useRef<string | null>(null);
   const selectedPet = companion.activePet;
   const { selectPet, pets } = companion;
 
   useEffect(() => {
     if (requestedPetId && pets.data?.some(pet => pet.id === requestedPetId)) void selectPet(requestedPetId);
   }, [requestedPetId, pets.data, selectPet]);
-  useEffect(() => { setActive(null); setMessage(''); setRequestId(newRequestId()); setError(''); }, [selectedPet?.id]);
+  useEffect(() => {
+    appliedConversation.current = null;
+    setActive(null); setMessage(''); setRequestId(newRequestId()); setError('');
+  }, [selectedPet?.id]);
 
   const history = useQuery({
     queryKey: [...companion.key, 'conversations', selectedPet?.id],
-    enabled: !!selectedPet && !companion.demo,
-    queryFn: () => api.get<ConversationList>(`/pet-companion/pets/${selectedPet!.id}/conversations`),
+    enabled: !!selectedPet,
+    queryFn: async (): Promise<ConversationList> => {
+      if (companion.demo) return { items: demoConversationsFor(await getDemo(), selectedPet!.id), nextCursor: null };
+      return api.get<ConversationList>(`/pet-companion/pets/${selectedPet!.id}/conversations`);
+    },
   });
+  const petId = selectedPet?.id;
+  const refetchHistory = history.refetch;
+  useFocusEffect(useCallback(() => {
+    if (petId) void refetchHistory();
+  }, [petId, refetchHistory]));
+  useEffect(() => {
+    if (!requestedConversationId || !history.data) return;
+    if (appliedConversation.current === requestedConversationId) return;
+    const found = history.data.items.find(item => item.id === requestedConversationId);
+    if (!found) return;
+    appliedConversation.current = requestedConversationId;
+    setActive(found);
+  }, [requestedConversationId, history.data]);
   const pending = useQuery({
     queryKey: [...companion.key, 'conversation', active?.id],
     enabled: !!active?.id && !companion.demo && (active.status === 'QUEUED'),
@@ -48,12 +68,12 @@ export default function Conversation() {
     try {
       const conversation = await companion.ask(selectedPet.id, message.trim(), requestId);
       setActive(conversation); setMessage(''); setRequestId(newRequestId());
-      if (!companion.demo) await history.refetch();
+      await history.refetch();
     } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); }
   };
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen title="우리 아이에게 물어보기" subtitle="MEMORIES, HELD GENTLY">
-    {companion.demo && <Card accent><Heading>기기 내 체험</Heading><Body muted>관찰 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요. 저장한 기록과 보호자 반응만 찾아 보여드려요.</Body></Card>}
+    {companion.demo && <Card accent><Heading>기기 내 체험</Heading><Body muted>관찰 기록과 대화는 이 기기에만 남아요. 실제 AI 분석이 아니에요. 저장한 기록과 보호자 반응만 찾아 보여드려요.</Body></Card>}
     <View style={[s.row, { marginBottom: 14 }]}>{companion.pets.data?.map(pet => <Chip key={pet.id} label={pet.name} selected={selectedPet?.id === pet.id} onPress={() => void companion.selectPet(pet.id)} />)}</View>
     {!selectedPet && <Empty title="먼저 우리 아이를 등록해 주세요" detail="아이별 기록을 바탕으로 대화를 이어가요."><Button title="우리 아이 등록하기" onPress={() => router.push('/pets/new')} /></Empty>}
     {selectedPet && <>
@@ -66,11 +86,12 @@ export default function Conversation() {
       </Card>}
       <Heading>이전 대화</Heading>
       {history.isLoading ? <Loading /> : <ErrorNote message={history.error ? errorMessage(history.error) : null} />}
-      {!companion.demo && history.data?.items.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => setActive(item)} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text><Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>)}
-      {!companion.demo && !history.isLoading && !history.data?.items.length && <Empty title="아직 대화가 없어요" detail="첫 질문을 남기면 이곳에 기억돼요." />}
-      {companion.demo && <Body muted>체험 대화는 저장하지 않으며, 실제 AI를 호출하지 않아요.</Body>}
+      {history.data?.items.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => setActive(item)} style={styles.history}><Text numberOfLines={1} style={styles.historyQuestion}>{item.question}</Text>{item.answer ? <Text numberOfLines={2} style={styles.historyAnswer}>{item.answer}</Text> : null}<Text style={styles.historyMeta}>{item.status === 'COMPLETED' ? '답변 완료' : item.status === 'FAILED' ? '답변 실패' : '답변 준비 중'} · {new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text></Pressable>)}
+      {!history.isLoading && !history.data?.items.length && (companion.demo
+        ? <Empty title="아직 나눈 이야기가 없어요" detail="질문을 남기면 이 기기에만 기억돼요. 나갔다가 다시 들어와도 같은 질문과 답변을 읽을 수 있어요. 실제 AI 답변은 아니에요." />
+        : <Empty title="아직 대화가 없어요" detail="첫 질문을 남기면 이곳에 기억돼요." />)}
     </>}
   </Screen></KeyboardAvoidingView>;
 }
 
-const styles = StyleSheet.create({ prompt: { color: c.text, fontSize: 17, fontWeight: '600', lineHeight: 25 }, question: { color: c.primary, fontSize: 14, lineHeight: 22 }, link: { color: c.mint, fontWeight: '600', marginTop: 5 }, history: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: c.border, gap: 5 }, historyQuestion: { color: c.text, fontSize: 15, fontWeight: '600' }, historyMeta: { color: c.muted, fontSize: 12 } });
+const styles = StyleSheet.create({ prompt: { color: c.text, fontSize: 17, fontWeight: '600', lineHeight: 25 }, question: { color: c.primary, fontSize: 14, lineHeight: 22 }, link: { color: c.mint, fontWeight: '600', marginTop: 5 }, history: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: c.border, gap: 5 }, historyQuestion: { color: c.text, fontSize: 15, fontWeight: '600' }, historyAnswer: { color: c.muted, fontSize: 13, lineHeight: 20 }, historyMeta: { color: c.muted, fontSize: 12 } });

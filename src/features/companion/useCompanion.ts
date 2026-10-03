@@ -6,7 +6,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import type { CompanionDeletion, CompanionListResponse, CompanionPet, CompanionObservation, CompanionConsent, CompanionFeedbackInput, CompanionConversation, CreateCompanionPetInput } from '@findthem/shared';
 import { useSession } from '../../core/session';
 import { api, request } from '../../lib/api';
-import { buildDemoObservation, changeDemo, createId, getDemo, groundedDemoReply } from './demo';
+import { buildDemoObservation, changeDemo, createId, getDemo, saveDemoConversation } from './demo';
 import { OBSERVATION_PAGE_SIZE, pageObservations } from './observationPages';
 
 export type Observation = CompanionObservation & { localPhotoUri?: string; localAudioUri?: string; localVideoUri?: string };
@@ -78,13 +78,13 @@ export function useCompanion() {
       const files = [...owned.map(o => o.localPhotoUri), ...owned.map(o => o.localAudioUri), ...owned.map(o => o.localVideoUri)];
       for (const uri of files) if (uri?.startsWith(FileSystem.documentDirectory + 'companion-photos/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-audio/') || uri?.startsWith(FileSystem.documentDirectory + 'companion-videos/')) await FileSystem.deleteAsync(uri, { idempotent: true });
     }
-    if (demo) await changeDemo(data => { const deleted = new Set(data.observations.filter(o => o.petId === id).map(o => o.id)); data.pets = data.pets.filter(p => p.id !== id); data.observations = data.observations.filter(o => o.petId !== id); data.feedback = data.feedback.filter(f => !deleted.has(f.observationId)); data.checkins = data.checkins.filter(item => item.petId !== id); });
+    if (demo) await changeDemo(data => { const deleted = new Set(data.observations.filter(o => o.petId === id).map(o => o.id)); data.pets = data.pets.filter(p => p.id !== id); data.observations = data.observations.filter(o => o.petId !== id); data.feedback = data.feedback.filter(f => !deleted.has(f.observationId)); data.checkins = data.checkins.filter(item => item.petId !== id); data.conversations = data.conversations.filter(item => item.petId !== id); });
     else { try { await api.delete(`${base}/pets/${id}`); } finally { await invalidate(); } }
     await invalidate();
   };
   const retry = async (id: string) => { await api.post(`${base}/observations/${id}/retry`); await invalidate(); };
   const ask = async (petId: string, text: string, idempotencyKey: string): Promise<CompanionConversation> => {
-    if (demo) { const data = await getDemo(); const reply = groundedDemoReply(petId, data.observations, data.feedback); return { id: reply.id, petId, question: text, answer: reply.text, status: 'COMPLETED', citedObservationIds: reply.citedObservationIds, createdAt: new Date().toISOString(), completedAt: new Date().toISOString() }; }
+    if (demo) { const conversation = await saveDemoConversation(petId, text, idempotencyKey); await invalidate(); return conversation; }
     const created = await api.post<{ id: string }>(`${base}/pets/${petId}/conversations`, { message: text, idempotencyKey });
     return api.get<CompanionConversation>(`${base}/conversations/${created.id}`);
   };

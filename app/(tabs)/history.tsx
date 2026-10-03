@@ -3,36 +3,46 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, type Href } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { MewIcon, type MewIconName } from '../../src/ui/MewIcon';
 import { studio as c } from '../../src/features/avatar/appearance';
 import { useCheckins, checkinLabels } from '../../src/features/companion/useCheckins';
+import { demoConversationsFor, getDemo } from '../../src/features/companion/demo';
 import { errorMessage } from '../../src/lib/api';
 
 export default function History() {
   const focused = useIsFocused();
   const checkins = useCheckins();
+  const threads = useQuery({
+    queryKey: [...checkins.key, 'conversations', checkins.activePet?.id],
+    enabled: !!checkins.activePet && checkins.demo,
+    queryFn: async () => demoConversationsFor(await getDemo(), checkins.activePet!.id),
+  });
+  const demoThreads = threads.data ?? [];
   const observations = checkins.observations.data?.pages.flatMap(page => page.items) ?? [];
   const observationLabel = (kind: string) => kind === 'AUDIO' ? '울음 관찰' : kind === 'VIDEO' ? '짧은 영상 기록' : '사진 관찰';
   const rows = [
     ...checkins.items.map(item => ({ id: `checkin-${item.id}`, at: item.occurredAt, label: checkinLabels[item.kind], note: item.note, icon: 'diary' as MewIconName, target: `/checkin?id=${item.id}` })),
     ...observations.map(item => ({ id: `observation-${item.id}`, at: item.createdAt, label: item.question || observationLabel(item.kind), note: item.inference?.observation[0] ?? null, icon: 'cat' as MewIconName, target: `/observations/${item.id}` })),
+    ...(checkins.demo ? demoThreads.map(item => ({ id: `conversation-${item.id}`, at: item.createdAt, label: item.question, note: item.answer, icon: 'talk' as MewIconName, target: `/(tabs)/conversation?conversationId=${encodeURIComponent(item.id)}` })) : []),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const hasMore = !!checkins.list.hasNextPage || !!checkins.observations.hasNextPage;
   const loadingMore = checkins.list.isFetchingNextPage || checkins.observations.isFetchingNextPage;
-  const loading = checkins.list.isLoading || checkins.observations.isLoading;
-  const error = checkins.list.error ?? checkins.observations.error ?? checkins.pets.error;
+  const loading = checkins.list.isLoading || checkins.observations.isLoading || (checkins.demo && threads.isLoading);
+  const error = checkins.list.error ?? checkins.observations.error ?? checkins.pets.error ?? threads.error;
+  const rereadNote = !checkins.demo ? '이전 질문과 답변을 다시 읽어요' : threads.isLoading ? '저장한 대화를 불러오고 있어요' : demoThreads.length ? '이전 질문과 답변을 다시 읽어요' : '아직 다시 읽을 대화가 없어요';
   return <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
     {focused && <StatusBar style="dark" />}
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.kicker}>함께 쌓아가는 하루</Text>
       <View style={styles.header}><Text accessibilityRole="header" style={styles.title}>기록</Text><Pressable accessibilityRole="button" accessibilityLabel="오늘 기록하기" onPress={() => router.push(checkins.activePet ? '/checkin' : '/pets/new')} style={styles.add}><Text style={styles.addText}>＋ 기록</Text></Pressable></View>
       <View style={styles.pets}>{checkins.pets.data?.map(pet => <Pressable key={pet.id} accessibilityRole="button" accessibilityState={{ selected: checkins.activePet?.id === pet.id }} onPress={() => void checkins.selectPet(pet.id)} style={[styles.chip, checkins.activePet?.id === pet.id && styles.selected]}><Text style={styles.chipText}>{pet.name}</Text></Pressable>)}</View>
-      <Pressable accessibilityRole="button" accessibilityLabel="대화 기록 보기" onPress={() => router.push('/(tabs)/conversation')} style={styles.conversations}><MewIcon name="talk" /><View style={{ flex: 1 }}><Text style={styles.label}>나누었던 이야기</Text><Text style={styles.note}>이전 질문과 답변을 다시 읽어요</Text></View><MewIcon name="arrow" size={18} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="대화 기록 보기" onPress={() => router.push('/(tabs)/conversation')} style={styles.conversations}><MewIcon name="talk" /><View style={{ flex: 1 }}><Text style={styles.label}>나누었던 이야기</Text><Text style={styles.note}>{rereadNote}</Text></View><MewIcon name="arrow" size={18} /></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="주간 기록 요약 보기" onPress={() => router.push('/reports/weekly')} style={styles.conversations}><MewIcon name="diary" /><View style={{ flex: 1 }}><Text style={styles.label}>최근 7일 요약</Text><Text style={styles.note}>기록 수와 상황 태그, 반응 여부만 모아요</Text></View><MewIcon name="arrow" size={18} /></Pressable>
       <Text style={styles.section}>{checkins.activePet ? `${checkins.activePet.name}의 일기` : '우리 아이의 일기'}</Text>
-      <Text style={styles.body}>사진, 울음, 짧은 영상, 돌봄 기록을 시간순으로 모았어요.</Text>
+      <Text style={styles.body}>{checkins.demo ? '사진, 울음, 짧은 영상, 돌봄 기록과 나눈 이야기를 시간순으로 모았어요.' : '사진, 울음, 짧은 영상, 돌봄 기록을 시간순으로 모았어요.'}</Text>
       {loading && <ActivityIndicator accessibilityLabel="기록 불러오는 중" style={{ marginVertical: 24 }} color={c.accent} />}
-      {error ? <View style={styles.empty}><Text accessibilityRole="alert" style={styles.error}>{errorMessage(error)}</Text><Pressable accessibilityRole="button" onPress={() => { void checkins.list.refetch(); void checkins.observations.refetch(); void checkins.pets.refetch(); }} style={styles.add}><Text style={styles.addText}>다시 불러오기</Text></Pressable></View> : null}
+      {error ? <View style={styles.empty}><Text accessibilityRole="alert" style={styles.error}>{errorMessage(error)}</Text><Pressable accessibilityRole="button" onPress={() => { void checkins.list.refetch(); void checkins.observations.refetch(); void checkins.pets.refetch(); void threads.refetch(); }} style={styles.add}><Text style={styles.addText}>다시 불러오기</Text></Pressable></View> : null}
       {rows.map(row => <Pressable key={row.id} accessibilityRole="button" onPress={() => router.push(row.target as Href)} style={styles.row}><View style={styles.icon}><MewIcon name={row.icon} size={20} /></View><View style={{ flex: 1 }}><Text style={styles.label}>{row.label}</Text>{row.note && <Text style={styles.note} numberOfLines={2}>{row.note}</Text>}<Text style={styles.time}>{new Date(row.at).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Seoul' })}</Text></View><MewIcon name="arrow" size={16} color={c.muted} /></Pressable>)}
       {!rows.length && !loading && !error && <View style={styles.empty}><MewIcon name="diary" size={46} /><Text style={styles.section}>{checkins.activePet ? '첫 페이지를 함께 채워요' : '기록할 아이를 등록해 주세요'}</Text><Text style={styles.body}>오늘 함께한 작은 순간부터 남겨 보세요.</Text><Pressable accessibilityRole="button" onPress={() => router.push(checkins.activePet ? '/checkin' : '/pets/new')} style={styles.add}><Text style={styles.addText}>{checkins.activePet ? '오늘 기록하기' : '우리 아이 등록하기'}</Text></Pressable></View>}
       {hasMore && <Pressable accessibilityRole="button" disabled={loadingMore} onPress={() => { if (checkins.observations.hasNextPage) void checkins.observations.fetchNextPage(); if (checkins.list.hasNextPage) void checkins.list.fetchNextPage(); }} style={styles.more}><Text style={styles.label}>{loadingMore ? '불러오는 중…' : '이전 기록 더 보기'}</Text></Pressable>}

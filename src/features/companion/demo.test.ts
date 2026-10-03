@@ -1,6 +1,6 @@
 import type { CompanionObservation } from '@findthem/shared';
-import { buildDemoObservation, demoInference, groundedDemoReply, initialDemo, changeDemo, getDemo, type FeedbackRecord } from './demo';
-import { writeDemo } from '../../core/storage';
+import { buildDemoObservation, clearDemoMemory, demoFromStorage, demoInference, groundedDemoReply, initialDemo, changeDemo, getDemo, saveDemoConversation, type FeedbackRecord } from './demo';
+import { readDemo, writeDemo } from '../../core/storage';
 jest.mock('../../core/storage', () => ({ readDemo: jest.fn().mockResolvedValue(null), writeDemo: jest.fn().mockResolvedValue(undefined) }));
 const record = (id: string, petId: string, date: string): CompanionObservation => ({ id, petId, createdAt: date, completedAt: date, kind: 'PHOTO', question: '왜 울까요?', contextTags: [], status: 'ABSTAINED', failureCode: null, media: [], inference: null, feedback: [] });
 const feedback = (observationId: string): FeedbackRecord => ({ id: 'feedback', observationId, action: '놀아줬어요', reaction: '장난감을 따라왔어요', note: null, happenedAt: '2026-09-01T12:00:00Z', createdAt: '2026-09-01T12:00:00Z' });
@@ -8,6 +8,7 @@ const feedback = (observationId: string): FeedbackRecord => ({ id: 'feedback', o
 describe('private demo memory', () => {
   it('starts without fabricated observations and with training disabled', () => {
     expect(initialDemo().observations).toEqual([]);
+    expect(initialDemo().conversations).toEqual([]);
     expect(initialDemo().consent.researchTraining).toBe(false);
   });
   it('does not claim an AI photo result in the local experience', () => {
@@ -61,5 +62,47 @@ describe('private demo memory', () => {
     expect(saved.media[0].url).not.toMatch(/^https?:/);
     expect(() => buildDemoObservation({ uri: 'file:///long.m4a', kind: 'AUDIO', durationMs: 46_001, petId: 'cat-a', question: '', contextTags: [], idempotencyKey: 'audio-long' }, [], [])).toThrow('AUDIO_TOO_LONG');
     expect(() => buildDemoObservation({ uri: 'file:///missing.m4a', kind: 'AUDIO', petId: 'cat-a', question: '', contextTags: [], idempotencyKey: 'audio-empty' }, [], [])).toThrow('AUDIO_TOO_LONG');
+  });
+
+  it('saves a cited demo conversation and reads the same thread after reload', async () => {
+    const windowObs = { ...record('window', 'cat-a', '2026-09-01T00:00:00Z'), question: '창가에서 오래 울었어요', contextTags: ['창가에서'] };
+    const toyObs = { ...record('toy', 'cat-a', '2026-09-03T00:00:00Z'), question: '장난감을 안 봐요', contextTags: ['거실에서'] };
+    const older: FeedbackRecord = { id: 'f-old', observationId: 'window', action: '간식을 줬어요', reaction: '창가로 다시 갔어요', note: null, happenedAt: '2026-09-01T12:00:00Z', createdAt: '2026-09-01T12:00:00Z' };
+    const newer: FeedbackRecord = { id: 'f-new', observationId: 'toy', action: '놀아줬어요', reaction: '장난감을 따라왔어요', note: null, happenedAt: '2026-09-03T12:00:00Z', createdAt: '2026-09-03T12:00:00Z' };
+    const aboutWindow = '창가에서 간식을 줬어요';
+    const matched = groundedDemoReply('cat-a', [windowObs, toyObs], [older, newer], aboutWindow);
+    expect(matched.citedObservationIds).toEqual(['window']);
+    expect(matched.text).toContain('간식을 줬어요');
+    expect(matched.text).toContain('창가로 다시 갔어요');
+    expect(matched.text).not.toContain('장난감을 따라왔어요');
+    expect(matched.text).toContain('실제 AI 분석이 아니에요');
+    expect(matched.text).not.toMatch(/알아들었어요|이해했어요|말을 했어요/);
+    const aboutToy = groundedDemoReply('cat-a', [windowObs, toyObs], [older, newer], '장난감을 따라왔어요');
+    expect(aboutToy.citedObservationIds).toEqual(['toy']);
+    expect(aboutToy.text).not.toContain('가장 최근');
+    const latestOnly = groundedDemoReply('cat-a', [windowObs, toyObs], [older, newer], '오늘 어땠나요');
+    expect(latestOnly.citedObservationIds).toEqual(['toy']);
+    expect(latestOnly.text).toContain('가장 최근에 저장한 반응');
+    await changeDemo(data => { data.observations = [windowObs, toyObs]; data.feedback = [older, newer]; data.conversations = []; });
+    const calls = jest.mocked(writeDemo).mock.calls.length;
+    const saved = await saveDemoConversation('cat-a', aboutWindow, 'thread-1', new Date('2026-09-04T00:00:00Z'));
+    expect(saved.citedObservationIds).toEqual(['window']);
+    expect(saved.question).toBe(aboutWindow);
+    expect(saved.createdAt).toBe('2026-09-04T00:00:00.000Z');
+    expect(jest.mocked(writeDemo).mock.calls.length).toBe(calls + 1);
+    const raw = jest.mocked(writeDemo).mock.calls[calls][0] as string;
+    const legacy = initialDemo();
+    const { conversations: _ignored, ...withoutThreads } = legacy;
+    expect(demoFromStorage(JSON.stringify(withoutThreads)).conversations).toEqual([]);
+    jest.mocked(readDemo).mockResolvedValueOnce(raw);
+    clearDemoMemory();
+    const loaded = await getDemo();
+    expect(loaded.conversations.filter(item => item.petId === 'cat-a').map(item => ({ id: item.id, question: item.question, answer: item.answer, cited: item.citedObservationIds, at: item.createdAt }))).toEqual([
+      { id: 'thread-1', question: aboutWindow, answer: saved.answer, cited: ['window'], at: saved.createdAt },
+    ]);
+    const again = await saveDemoConversation('cat-a', aboutWindow, 'thread-1', new Date('2026-09-05T00:00:00Z'));
+    expect(again).toEqual(saved);
+    expect((await getDemo()).conversations.filter(item => item.id === 'thread-1')).toHaveLength(1);
+    await expect(saveDemoConversation('cat-a', '다른 질문', 'thread-1')).rejects.toThrow('IDEMPOTENCY_CONFLICT');
   });
 });
