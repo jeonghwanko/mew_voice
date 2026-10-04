@@ -24,6 +24,7 @@ export function LatestObservation() {
       : summary
         ? [summary.kindLabel, summary.timeLabel].filter(Boolean).join(' · ')
         : HOME_OBSERVATION_EMPTY;
+  // Home already shows 사진 찍기 and 울음 녹음, so the empty card does not open capture.
   const open = () => {
     if (failed) { void companion.observations.refetch(); return; }
     if (summary) router.push(homeObservationHref(summary.id));
@@ -39,7 +40,7 @@ export function LatestObservation() {
       {photoUri ? <Image source={{ uri: photoUri }} style={styles.thumb} accessibilityLabel="최근 관찰 사진" /> : videoUri ? <View pointerEvents="none"><VideoPreview uri={videoUri} compact /></View> : <MewIcon name="cat" size={22} color={c.accent} />}
       <View style={styles.copy}>
         <Text style={styles.kicker}>최근 관찰</Text>
-        <Text style={styles.body} numberOfLines={2}>{line}</Text>
+        <Text style={styles.body} numberOfLines={summary ? 2 : 4}>{line}</Text>
         {summary?.honesty ? <Text style={styles.note} numberOfLines={2}>{summary.honesty}</Text> : null}
         {summary?.reaction ? <Text style={styles.note} numberOfLines={1}>저장한 반응: {summary.reaction}</Text> : null}
         {failed ? <Text style={styles.hint}>{errorMessage(companion.observations.error)}</Text> : null}

@@ -1,6 +1,6 @@
 /** Newest saved photo, cry, or short video for the cat selected on the home. */
 
-export const HOME_OBSERVATION_EMPTY = '아직 남긴 사진·울음·영상이 없어요';
+export const HOME_OBSERVATION_EMPTY = '아직 남긴 사진·울음·영상이 없어요. 사진 찍기나 울음 녹음으로 남겨 둘 수 있어요.';
 
 const KIND_LABEL: Record<string, string> = {
   PHOTO: '사진 관찰',

@@ -30,5 +30,7 @@ it('shows the selected cat’s latest observation, not another cat or an analysi
   expect(homeObservationSummary([{ id: 'pic', petId: 'demo-momo', kind: 'PHOTO', createdAt: 'bad' }], 'demo-momo', false)?.honesty).toBeNull();
   expect(homeObservationSummary(items, 'missing', true)).toBeNull();
   expect(homeObservationSummary(items, null, true)).toBeNull();
+  expect(HOME_OBSERVATION_EMPTY).toBe('아직 남긴 사진·울음·영상이 없어요. 사진 찍기나 울음 녹음으로 남겨 둘 수 있어요.');
+  expect(HOME_OBSERVATION_EMPTY).not.toMatch(/해석|번역|분석|감정|%/);
   expect(HOME_OBSERVATION_EMPTY).not.toBe('오늘 아직 기록이 없어요');
 });
