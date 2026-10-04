@@ -29,6 +29,7 @@ import { studio as c, type CatMood } from './appearance';
 import { MewIcon } from '../../ui/MewIcon';
 import { HomeMenu, type HomeMenuPage } from './HomeMenu';
 import { QuickAction } from './QuickAction';
+import { homeQuickActions } from './homeQuickActions';
 import { LatestObservation } from './LatestObservation';
 import { TodayCare } from './TodayCare';
 
@@ -322,9 +323,9 @@ export default function CatStudio() {
             </View>
             <View style={[styles.stage, !editing && !keyboard && (pet ? styles.stageWithRecords : styles.stageWithCare), editing && !wide && (side === 'left' ? { marginLeft: 186 } : { marginRight: 186 })]}><CatStage focused={focused && !menuPage && !picker && !chatOpen} appearance={appearance.value} mood={mood} onPet={() => setPetting(true)} /></View>
             {!editing && <View style={[styles.quickActions, height < 700 && { gap: 8, top: 100 }]}>
-              <QuickAction name="talk" label="말 걸기" hint="놀이용 야옹이에요. 말의 뜻을 번역하지 않아요." onPress={() => router.push('/meow')} />
-              <QuickAction name="listen" label="울음 듣기" hint="고양이 울음 녹음하고 살펴보기" onPress={() => router.push(homeCaptureHref('audio'))} />
-              <QuickAction name="camera" label="사진 살피기" hint="사진으로 자세와 상황 살펴보기" onPress={() => router.push(homeCaptureHref('photo'))} />
+              <QuickAction name="talk" label={homeQuickActions.talk.label} hint={homeQuickActions.talk.hint} onPress={() => router.push('/meow')} />
+              <QuickAction name="listen" label={homeQuickActions.record.label} hint={homeQuickActions.record.hint} onPress={() => router.push(homeCaptureHref('audio'))} />
+              <QuickAction name="camera" label={homeQuickActions.photo.label} hint={homeQuickActions.photo.hint} onPress={() => router.push(homeCaptureHref('photo'))} />
             </View>}
             <View style={styles.sceneTools}>
               <Pressable accessibilityRole="button" accessibilityLabel="고양이 꾸미기" accessibilityState={{ expanded: editing }} onPress={() => setEditing(!editing)} style={[styles.roundTool, editing && styles.activeTool]}><MewIcon name="palette" size={22} color={editing ? c.surface : c.ink} /></Pressable>

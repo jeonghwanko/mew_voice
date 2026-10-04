@@ -4,11 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { MewIcon, type MewIconName } from '../../ui/MewIcon';
 import { studio as c } from './appearance';
+import { homeQuickActions } from './homeQuickActions';
 
 export type HomeMenuPage = 'menu' | 'wallet' | 'notices' | 'mail' | 'faq' | 'invite';
 const titles: Record<HomeMenuPage, string> = { menu: '우리의 작은 공간', wallet: '나의 재화', notices: '공지사항', mail: '우편함', faq: '자주 묻는 질문', invite: '친구 초대' };
 const faqs = [
-  ['말 걸기와 울음 듣기는 어떻게 다른가요?', '말 걸기는 놀이예요. 목소리의 길이와 리듬으로 야옹 소리를 만들 뿐, 말의 뜻을 번역하지 않아요. 울음 듣기는 실제 고양이 울음을 이 기기에 녹음하는 기능이고, 체험에서는 그 소리를 AI로 분석하지 않아요.'],
+  [`${homeQuickActions.talk.label}와 ${homeQuickActions.record.label}은 어떻게 다른가요?`, `${homeQuickActions.talk.label}는 놀이예요. 목소리의 길이와 리듬으로 야옹 소리를 만들 뿐, 말의 뜻을 번역하지 않아요. ${homeQuickActions.record.label}은 지금 이 고양이의 울음을 이 기기에 녹음하는 기능이고, 체험에서는 그 소리를 AI로 분석하지 않아요.`],
   ['사진으로 무엇을 알 수 있나요?', '사진에 보이는 자세와 주변 상황을 단서로 가능한 의미를 살펴봐요. 고양이의 마음을 확정하거나 건강을 진단하지는 않아요.'],
   ['체험 기록은 어디에 저장되나요?', '체험 기록은 이 기기에만 남아요. 실제 AI 분석이 아니에요. 처음 들어 있는 모모는 지어낸 프로필이에요. 계정 모드는 보관에 동의한 기록을 비공개로 저장해요.'],
   ['이전 대화와 우리 아이 정보는 어디에 있나요?', '홈의 글로 대화하기에서 선택한 아이의 이전 대화를 이어서 읽을 수 있어요. 기록의 대화 기록과 전체 메뉴에서도 볼 수 있어요. 전체 메뉴의 우리 아이에서 고양이를 등록하고 관리할 수 있어요.'],
