@@ -32,6 +32,7 @@ import { QuickAction } from './QuickAction';
 import { homeQuickActions } from './homeQuickActions';
 import { chatCaptureShortcut } from './chatCaptureShortcut';
 import { chatCareShortcut } from './chatCareShortcut';
+import { homeChatEntry } from './homeChatEntry';
 import { LatestObservation } from './LatestObservation';
 import { TodayCare } from './TodayCare';
 
@@ -307,7 +308,7 @@ export default function CatStudio() {
     Alert.alert('대화를 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
   };
   const panel = <AppearancePanel compact={!wide} value={appearance.value} onChange={appearance.setValue} onSave={() => { void appearance.save().then(saved => { if (saved) { setNotice('이 모습을 저장했어요'); if (!wide) setEditing(false); } }); }} saving={appearance.saving} ready={appearance.ready} onClose={() => setEditing(false)} side={side} onSide={() => setSide(side === 'left' ? 'right' : 'left')} />;
-  const chatEntry = thinking ? '답변을 준비하고 있어요…' : turns.length ? '이전 대화 이어 읽기' : pet ? `${pet.name}에게 궁금한 이야기` : '우리 아이와 대화하기';
+  const chatEntry = homeChatEntry({ thinking, saved: turns.length > 0, petName: pet?.name });
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
     {focused && <StatusBar style="dark" />}
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -336,7 +337,7 @@ export default function CatStudio() {
               {!keyboard && <LatestObservation />}
               {!keyboard && <TodayCare />}
               <Pressable accessibilityRole="button" accessibilityLabel="고양이 쓰다듬기" onPress={() => setPetting(true)} style={styles.greeting}><View style={styles.dot} /><Text style={styles.sceneNote}>{petting ? '가상 고양이가 인사해요' : '터치해서 인사해요'}</Text></Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="글로 대화하기" onPress={() => setChatOpen(true)} style={styles.chatEntry}><MewIcon name="talk" size={21} /><Text style={styles.chatEntryText}>{chatEntry}</Text><MewIcon name="arrow" size={16} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={chatEntry.accessibilityLabel} onPress={() => setChatOpen(true)} style={styles.chatEntry}><MewIcon name="talk" size={21} /><View style={styles.chatEntryCopy}><Text style={styles.chatEntryText}>{chatEntry.title}</Text>{chatEntry.detail ? <Text style={styles.chatEntryText}>{chatEntry.detail}</Text> : null}</View><MewIcon name="arrow" size={16} /></Pressable>
               {(appearance.error || companion.pets.error) ? <Text accessibilityRole="alert" style={styles.error}>{appearance.error || errorMessage(companion.pets.error)}</Text> : null}
               {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
             </View>}
@@ -471,7 +472,8 @@ const styles = StyleSheet.create({
   greeting: { minHeight: 44, flexDirection: 'row', gap: 6, alignItems: 'center' },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: c.accent }, sceneNote: { color: c.muted, fontSize: 11 },
   chatEntry: { flexDirection: 'row', alignItems: 'center', gap: 12, width: '100%', maxWidth: 560, padding: 16, backgroundColor: '#FFFCF6F0', borderRadius: 24, borderWidth: 1, borderColor: '#FFFFFF' },
-  chatEntryText: { flex: 1, color: c.ink, fontSize: 13 },
+  chatEntryCopy: { flex: 1, gap: 2 },
+  chatEntryText: { color: c.ink, fontSize: 13, lineHeight: 18 },
   desktopPanel: { width: 250, paddingBottom: 12 }, mobilePanel: { position: 'absolute', top: 8, bottom: 8, zIndex: 4, width: 182 },
   chatBackdrop: { flex: 1, backgroundColor: '#17251C55', justifyContent: 'flex-end', alignItems: 'center' },
   conversation: { width: '100%', maxWidth: 640, paddingHorizontal: 22, paddingTop: 12, paddingBottom: 12, backgroundColor: c.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
