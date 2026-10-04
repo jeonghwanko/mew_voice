@@ -32,7 +32,7 @@ import { QuickAction } from './QuickAction';
 import { homeQuickActions } from './homeQuickActions';
 import { chatCaptureShortcut } from './chatCaptureShortcut';
 import { chatCareShortcut } from './chatCareShortcut';
-import { homeChatEntry } from './homeChatEntry';
+import { HOME_CHAT_LIST_FAILED, HOME_CHAT_LIST_LOADING, homeChatEntry } from './homeChatEntry';
 import { LatestObservation } from './LatestObservation';
 import { TodayCare } from './TodayCare';
 
@@ -308,7 +308,7 @@ export default function CatStudio() {
     Alert.alert('대화를 삭제할까요?', copy, [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: execute }]);
   };
   const panel = <AppearancePanel compact={!wide} value={appearance.value} onChange={appearance.setValue} onSave={() => { void appearance.save().then(saved => { if (saved) { setNotice('이 모습을 저장했어요'); if (!wide) setEditing(false); } }); }} saving={appearance.saving} ready={appearance.ready} onClose={() => setEditing(false)} side={side} onSide={() => setSide(side === 'left' ? 'right' : 'left')} />;
-  const chatEntry = homeChatEntry({ thinking, saved: turns.length > 0, petName: pet?.name });
+  const chatEntry = homeChatEntry({ thinking, saved: turns.length > 0, loading: !!pet && savedThreads.isLoading && turns.length === 0, failed: savedThreads.isError && turns.length === 0, petName: pet?.name });
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
     {focused && <StatusBar style="dark" />}
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -379,8 +379,8 @@ function turnText(turn: HomeConversationTurn) {
   return turn.answer?.trim() || '아직 답변이 준비되지 않았어요.';
 }
 function ChatThread({ turns, thinking, loading, failed, petName, focusId, onFocusOffset, careAt, onObservation, onCheckin, demo, petsKnown, otherPets, movingId, movePetId, deleting, editingId, questionDraft, onQuestionDraft, onDelete, onStartMove, onMovePet, onSaveMove, onCancelMove, onStartQuestion, onSaveQuestion, onCancelQuestion, editingAnswerId, answerDraft, onAnswerDraft, onStartAnswer, onSaveAnswer, onCancelAnswer, timeEditingId, timeDraft, onTimeDraft, onStartTime, onSaveTime, onCancelTime, citationEditing, observations, checkins, citationPets, onStartCitation, onCitationPet, onCitationTarget, onSaveCitation, onCancelCitation }: { turns: HomeConversationTurn[]; thinking: boolean; loading: boolean; failed: boolean; petName?: string; focusId: string | null; onFocusOffset: (y: number) => void; careAt: (id: string) => string | undefined; onObservation: (id: string, turnId: string) => void; onCheckin: (id: string, turnId: string) => void; demo: boolean; petsKnown: boolean; otherPets: { id: string; name: string }[]; movingId: string | null; movePetId: string; deleting: boolean; editingId: string | null; questionDraft: string; onQuestionDraft: (value: string) => void; onDelete: (id: string) => void; onStartMove: (id: string) => void; onMovePet: (id: string) => void; onSaveMove: (id: string) => void; onCancelMove: () => void; onStartQuestion: (id: string) => void; onSaveQuestion: (id: string) => void; onCancelQuestion: () => void; editingAnswerId: string | null; answerDraft: string; onAnswerDraft: (value: string) => void; onStartAnswer: (id: string) => void; onSaveAnswer: (id: string) => void; onCancelAnswer: () => void; timeEditingId: string | null; timeDraft: string; onTimeDraft: (value: string) => void; onStartTime: (id: string) => void; onSaveTime: (id: string) => void; onCancelTime: () => void; citationEditing: { turnId: string; kind: 'observation' | 'checkin'; index: number; petId: string; targetId: string } | null; observations: ObservationChoice[] | null; checkins: CheckinChoice[] | null; citationPets: { id: string; name: string }[]; onStartCitation: (turnId: string, kind: 'observation' | 'checkin', index: number) => void; onCitationPet: (petId: string) => void; onCitationTarget: (id: string) => void; onSaveCitation: (turnId: string) => void; onCancelCitation: () => void }) {
-  if (loading) return <Text style={styles.bubbleText}>이전 대화를 확인하고 있어요.</Text>;
-  if (failed) return <Text style={styles.bubbleText}>이전 대화를 불러오지 못했어요.</Text>;
+  if (loading) return <Text style={styles.bubbleText}>{HOME_CHAT_LIST_LOADING}</Text>;
+  if (failed) return <Text style={styles.bubbleText}>{HOME_CHAT_LIST_FAILED}</Text>;
   if (!turns.length && !thinking) return <Text style={styles.bubbleText}>{petName ? `${petName}와 어떤 이야기를 나눠 볼까요?` : '반가워요. 나만의 고양이를 만나 보세요.'}</Text>;
   return <View style={{ gap: 16 }}>
     {turns.map(turn => <View key={turn.id} onLayout={event => { if (turn.id === focusId) onFocusOffset(event.nativeEvent.layout.y); }}>
