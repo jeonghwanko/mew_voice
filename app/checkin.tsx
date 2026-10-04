@@ -6,6 +6,7 @@ import { Body, Button, Card, Chip, ErrorNote, Field, Heading, Loading, Screen, s
 import { colors as c } from '../src/ui/theme';
 import { useCheckin, useCheckins, checkinLabels } from '../src/features/companion/useCheckins';
 import { checkinContinueHref, checkinExitHref, checkinUnavailableHref } from '../src/features/companion/checkinNavigation';
+import { checkinSave } from '../src/features/companion/checkinSave';
 import { newRequestId } from '../src/features/companion/useCompanion';
 import { sessionStorage } from '../src/core/storage';
 import { useSession } from '../src/core/session';
@@ -97,7 +98,7 @@ export default function Checkin() {
       </Card> : null}
       <ErrorNote message={error} />
       {conflict && <Button title="최신 기록 다시 불러오기" secondary disabled={busy} onPress={reload} />}
-      <Button title={params.id ? '수정 저장하기' : '기록 남기기'} busy={busy} disabled={busy || loadedKey !== key || (draft.kind === 'NOTE' && !draft.note.trim())} onPress={() => void save()} />
+      <Button title={params.id ? '수정 저장하기' : checkinSave.label} busy={busy} disabled={busy || loadedKey !== key || (draft.kind === 'NOTE' && !draft.note.trim())} onPress={() => void save()} />
       <Button title="나중에 이어 쓰기" secondary disabled={busy} onPress={resumeLater} />
       {!!params.id && <Button title="이 기록 삭제" danger disabled={busy} onPress={remove} />}</>}
     </>}
