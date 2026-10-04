@@ -31,6 +31,7 @@ import { HomeMenu, type HomeMenuPage } from './HomeMenu';
 import { QuickAction } from './QuickAction';
 import { homeQuickActions } from './homeQuickActions';
 import { chatCaptureShortcut } from './chatCaptureShortcut';
+import { chatCareShortcut } from './chatCareShortcut';
 import { LatestObservation } from './LatestObservation';
 import { TodayCare } from './TodayCare';
 
@@ -357,7 +358,7 @@ export default function CatStudio() {
           {savedThreads.isError && <Pressable accessibilityRole="button" onPress={() => void savedThreads.refetch()} style={styles.citation}><Text style={styles.citationText}>이전 대화 다시 불러오기</Text></Pressable>}
           {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
           {!pet ? <Pressable accessibilityRole="button" onPress={() => navigateFromChat('/pets/new')} style={styles.register}><Text style={styles.registerText}>우리 아이 등록하기</Text></Pressable> : <View style={styles.inputRow}><TextInput accessibilityLabel="고양이에게 물어볼 내용" placeholder="오늘 궁금했던 이야기를 적어 주세요" placeholderTextColor={c.muted} style={styles.input} value={message} editable={!thinking} maxLength={1500} onChangeText={value => { setMessage(value); requestId.current = newRequestId(); }} onSubmitEditing={() => void send()} returnKeyType="send" /><Pressable accessibilityRole="button" accessibilityLabel="질문 보내기" disabled={!message.trim() || thinking} onPress={() => void send()} style={[styles.send, (!message.trim() || thinking) && { opacity: 0.45 }]}><Ionicons name="arrow-up" size={22} color="#FFFDF8" /></Pressable></View>}
-          <View style={[styles.shortcuts, keyboard && { display: 'none' }]}><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/meow')} style={styles.shortcut}><Ionicons name="mic-outline" size={16} color={c.accent} /><Text style={styles.shortcutText}>야옹 놀이</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat(homeCaptureHref())} style={styles.shortcut}><Ionicons name="camera-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>{chatCaptureShortcut.label}</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/checkin')} style={styles.shortcut}><Ionicons name="add-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>기록</Text></Pressable></View>
+          <View style={[styles.shortcuts, keyboard && { display: 'none' }]}><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/meow')} style={styles.shortcut}><Ionicons name="mic-outline" size={16} color={c.accent} /><Text style={styles.shortcutText}>야옹 놀이</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat(homeCaptureHref())} style={styles.shortcut}><Ionicons name="camera-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>{chatCaptureShortcut.label}</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/checkin')} style={styles.shortcut}><Ionicons name="add-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>{chatCareShortcut.label}</Text></Pressable></View>
         </SafeAreaView>
         </KeyboardAvoidingView>
         </Modal>
