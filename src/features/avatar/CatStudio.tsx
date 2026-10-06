@@ -11,6 +11,7 @@ import type { CompanionConversation } from '@findthem/shared';
 import { useSession } from '../../core/session';
 import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
+import { homeHeaderTitle } from './homeHeaderTitle';
 import { loadSavedConversations } from '../companion/conversationPages';
 import { conversationOpenPet, findDemoConversation } from '../companion/conversationStore';
 import { checkinChoiceLabel, choicesForPet, firstChoiceOnPet, hasOtherChoice, initialCitationChoice, observationChoiceLabel, petsWithOtherChoice, recentChoices, type CheckinChoice, type ObservationChoice } from '../companion/citationChoices';
@@ -43,6 +44,11 @@ export default function CatStudio() {
   const { session } = useSession();
   const pet = companion.activePet;
   const pets = companion.pets.data;
+  const companionKey = companion.key.join(':');
+  const lastPetName = useRef<{ key: string; name: string } | null>(null);
+  if (pet?.name) lastPetName.current = { key: companionKey, name: pet.name };
+  const petsLoading = !companion.pets.isError && (!companion.selectionReady || (!pets && companion.pets.isFetching));
+  const headerTitle = homeHeaderTitle({ petName: pet?.name, loading: petsLoading, lastKnownName: lastPetName.current?.key === companionKey ? lastPetName.current.name : null });
   const selectSavedPet = companion.selectPet;
   const { width, height } = useWindowDimensions();
   const wide = width >= 760;
@@ -321,7 +327,7 @@ export default function CatStudio() {
           {editing && wide && side === 'left' && <View style={styles.desktopPanel}>{panel}</View>}
           <View style={[styles.scene, keyboard && { minHeight: 100 }]}>
             <View style={styles.sceneHeading}>
-              <Pressable accessibilityRole="button" accessibilityLabel="함께할 고양이 선택" onPress={() => setPicker(true)} style={styles.petSelector}><Text style={styles.headerTitle}>{pet?.name ?? '나의 고양이'}</Text><Ionicons name="chevron-down" size={14} color={c.muted} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="함께할 고양이 선택" onPress={() => setPicker(true)} style={styles.petSelector}><Text style={styles.headerTitle}>{headerTitle}</Text><Ionicons name="chevron-down" size={14} color={c.muted} /></Pressable>
               <Text style={styles.eyebrow}>{pet?.id === 'demo-momo' ? '모모는 지어낸 체험 프로필이에요' : companion.demo ? '체험 · 기록은 이 기기에만 남아요' : '오늘도 너와 함께'}</Text>
             </View>
             <View style={[styles.stage, !editing && !keyboard && (pet ? styles.stageWithRecords : styles.stageWithCare), editing && !wide && (side === 'left' ? { marginLeft: 186 } : { marginRight: 186 })]}><CatStage focused={focused && !menuPage && !picker && !chatOpen} appearance={appearance.value} mood={mood} onPet={() => setPetting(true)} /></View>
