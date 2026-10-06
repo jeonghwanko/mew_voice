@@ -12,6 +12,7 @@ import { useSession } from '../../core/session';
 import { api, errorMessage } from '../../lib/api';
 import { newRequestId, useCompanion } from '../companion/useCompanion';
 import { homeHeaderTitle } from './homeHeaderTitle';
+import { HOME_REGISTER_CTA, HOME_REGISTER_LOADING, homeRegisterCta } from './homeRegisterCta';
 import { loadSavedConversations } from '../companion/conversationPages';
 import { conversationOpenPet, findDemoConversation } from '../companion/conversationStore';
 import { checkinChoiceLabel, choicesForPet, firstChoiceOnPet, hasOtherChoice, initialCitationChoice, observationChoiceLabel, petsWithOtherChoice, recentChoices, type CheckinChoice, type ObservationChoice } from '../companion/citationChoices';
@@ -49,6 +50,7 @@ export default function CatStudio() {
   if (pet?.name) lastPetName.current = { key: companionKey, name: pet.name };
   const petsLoading = !companion.pets.isError && (!companion.selectionReady || (!pets && companion.pets.isFetching));
   const headerTitle = homeHeaderTitle({ petName: pet?.name, loading: petsLoading, lastKnownName: lastPetName.current?.key === companionKey ? lastPetName.current.name : null });
+  const registerCta = homeRegisterCta({ hasPet: !!pet, loading: petsLoading });
   const selectSavedPet = companion.selectPet;
   const { width, height } = useWindowDimensions();
   const wide = width >= 760;
@@ -364,7 +366,7 @@ export default function CatStudio() {
           {pending.isError && <Pressable accessibilityRole="button" onPress={() => void pending.refetch()} style={styles.citation}><Text style={styles.citationText}>답변 다시 확인</Text></Pressable>}
           {savedThreads.isError && <Pressable accessibilityRole="button" onPress={() => void savedThreads.refetch()} style={styles.citation}><Text style={styles.citationText}>이전 대화 다시 불러오기</Text></Pressable>}
           {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
-          {!pet ? <Pressable accessibilityRole="button" onPress={() => navigateFromChat('/pets/new')} style={styles.register}><Text style={styles.registerText}>우리 아이 등록하기</Text></Pressable> : <View style={styles.inputRow}><TextInput accessibilityLabel="고양이에게 물어볼 내용" placeholder="오늘 궁금했던 이야기를 적어 주세요" placeholderTextColor={c.muted} style={styles.input} value={message} editable={!thinking} maxLength={1500} onChangeText={value => { setMessage(value); requestId.current = newRequestId(); }} onSubmitEditing={() => void send()} returnKeyType="send" /><Pressable accessibilityRole="button" accessibilityLabel="질문 보내기" disabled={!message.trim() || thinking} onPress={() => void send()} style={[styles.send, (!message.trim() || thinking) && { opacity: 0.45 }]}><Ionicons name="arrow-up" size={22} color="#FFFDF8" /></Pressable></View>}
+          {registerCta === 'loading' ? <Text style={styles.notice}>{HOME_REGISTER_LOADING}</Text> : registerCta === 'register' ? <Pressable accessibilityRole="button" onPress={() => navigateFromChat('/pets/new')} style={styles.register}><Text style={styles.registerText}>{HOME_REGISTER_CTA}</Text></Pressable> : <View style={styles.inputRow}><TextInput accessibilityLabel="고양이에게 물어볼 내용" placeholder="오늘 궁금했던 이야기를 적어 주세요" placeholderTextColor={c.muted} style={styles.input} value={message} editable={!thinking} maxLength={1500} onChangeText={value => { setMessage(value); requestId.current = newRequestId(); }} onSubmitEditing={() => void send()} returnKeyType="send" /><Pressable accessibilityRole="button" accessibilityLabel="질문 보내기" disabled={!message.trim() || thinking} onPress={() => void send()} style={[styles.send, (!message.trim() || thinking) && { opacity: 0.45 }]}><Ionicons name="arrow-up" size={22} color="#FFFDF8" /></Pressable></View>}
           <View style={[styles.shortcuts, keyboard && { display: 'none' }]}><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/meow')} style={styles.shortcut}><Ionicons name="mic-outline" size={16} color={c.accent} /><Text style={styles.shortcutText}>야옹 놀이</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat(homeCaptureHref())} style={styles.shortcut}><Ionicons name="camera-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>{chatCaptureShortcut.label}</Text></Pressable><Pressable accessibilityRole="button" onPress={() => navigateFromChat('/checkin')} style={styles.shortcut}><Ionicons name="add-outline" size={16} color={c.muted} /><Text style={styles.shortcutText}>{chatCareShortcut.label}</Text></Pressable></View>
         </SafeAreaView>
         </KeyboardAvoidingView>

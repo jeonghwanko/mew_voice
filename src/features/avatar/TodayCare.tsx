@@ -8,11 +8,15 @@ import { useCheckins } from '../companion/useCheckins';
 import { loadTodayCheckins } from '../companion/weeklyPages';
 import { homeCheckinHref } from '../companion/checkinNavigation';
 import { studio as c } from './appearance';
+import { HOME_REGISTER_CTA, homeRegisterCta } from './homeRegisterCta';
 
 /** Today's care check-in for the selected cat, on the home surface. */
 export function TodayCare() {
   const checkins = useCheckins();
   const pet = checkins.activePet;
+  const pets = checkins.pets.data;
+  const petsLoading = !checkins.pets.isError && (!checkins.selectionReady || (!pets && checkins.pets.isFetching));
+  const registerCta = homeRegisterCta({ hasPet: !!pet, loading: petsLoading });
   const todayKey = dayKey(new Date());
   const walked = useQuery({
     queryKey: [...checkins.key, 'today-care', pet?.id, checkins.demo, todayKey],
@@ -25,12 +29,13 @@ export function TodayCare() {
   const loading = !!pet && walked.isLoading && today.length === 0;
   const failed = !!pet && walked.isError && today.length === 0;
   const line = !pet
-    ? (checkins.pets.isLoading ? '함께할 아이를 확인하고 있어요' : '아이를 등록하면 오늘의 돌봄을 남길 수 있어요')
+    ? (petsLoading ? '함께할 아이를 확인하고 있어요' : '아이를 등록하면 오늘의 돌봄을 남길 수 있어요')
     : loading ? '오늘의 돌봄을 확인하고 있어요'
     : failed ? '오늘의 돌봄을 불러오지 못했어요'
     : summary ? `${summary.title}\n${summary.detail}`
     : '오늘 아직 기록이 없어요';
   const open = () => {
+    if (petsLoading) return;
     if (!pet) { router.push('/pets/new'); return; }
     if (failed) { void walked.refetch(); return; }
     if (today[0]) router.push(homeCheckinHref(today[0].id));
@@ -50,11 +55,11 @@ export function TodayCare() {
         {truncationNote ? <Text style={styles.hint}>{truncationNote}</Text> : null}
         {failed ? <Text style={styles.hint}>{errorMessage(walked.error)}</Text> : null}
       </View>
-      {loading ? <ActivityIndicator color={c.accent} /> : null}
+      {loading || petsLoading ? <ActivityIndicator color={c.accent} /> : null}
     </Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel={pet ? '오늘 돌봄 기록하기' : '우리 아이 등록하기'} onPress={add} style={styles.add}>
-      <Text style={styles.addText}>{pet ? '남기기' : '등록'}</Text>
-    </Pressable>
+    {registerCta === 'input' ? <Pressable accessibilityRole="button" accessibilityLabel="오늘 돌봄 기록하기" onPress={add} style={styles.add}><Text style={styles.addText}>남기기</Text></Pressable>
+      : registerCta === 'register' ? <Pressable accessibilityRole="button" accessibilityLabel={HOME_REGISTER_CTA} onPress={add} style={styles.add}><Text style={styles.addText}>등록</Text></Pressable>
+      : null}
   </View>;
 }
 
